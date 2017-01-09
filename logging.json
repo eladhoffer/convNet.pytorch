@@ -31,6 +31,11 @@
             "level": "INFO",
             "handlers": ["console", "log_file"],
             "propagate": "no"
+        },
+        "root": {
+            "level": "ERROR",
+            "handlers": [],
+            "propagate": "no"
         }
     }
 }

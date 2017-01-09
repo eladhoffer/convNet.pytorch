@@ -75,6 +75,9 @@ def main():
         os.makedirs(save_path)
 
     setup_logging(os.path.join(save_path, 'log.txt'))
+    results_file = os.path.join(save_path, 'results.%s')
+    results = ResultsLog(results_file % 'csv', results_file % 'html')
+
     log = logging.getLogger('main')
     log.info("saving to %s", save_path)
     log.info("run arguments: %s", args)
@@ -82,6 +85,9 @@ def main():
     if 'cuda' in args.type:
         args.gpus = [int(i) for i in args.gpus.split(',')]
         torch.cuda.set_device(args.gpus[0])
+        cudnn.benchmark = True
+    else:
+        args.gpus = None
 
     # create model
     log.info("creating model %s", args.model)
@@ -114,7 +120,6 @@ def main():
         else:
             log.error("no checkpoint found at '%s'", args.resume)
 
-    cudnn.benchmark = True
     num_parameters = sum([l.nelement() for l in model.parameters()])
     log.info("number of parameters: %d", num_parameters)
 
@@ -126,15 +131,20 @@ def main():
                               input_size=args.input_size, augment=False)
     }
     transform = getattr(model, 'input_transform', default_transform)
+    regime = getattr(model, 'regime', {0: {'optimizer': args.optimizer,
+                                           'lr': args.lr,
+                                           'momentum': args.momentum,
+                                           'weight_decay': args.weight_decay}})
+    # define loss function (criterion) and optimizer
+    criterion = getattr(model, 'criterion', nn.CrossEntropyLoss)()
+    criterion.type(args.type)
+    model.type(args.type)
 
     val_data = get_dataset(args.dataset, 'val', transform['eval'])
     val_loader = torch.utils.data.DataLoader(
         val_data,
         batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
-
-    # define loss function (criterion) and optimizer
-    criterion = nn.CrossEntropyLoss().type(args.type)
 
     if args.evaluate:
         validate(val_loader, model, criterion, 0)
@@ -146,22 +156,8 @@ def main():
         batch_size=args.batch_size, shuffle=True,
         num_workers=args.workers, pin_memory=True)
 
-    regime = getattr(model, 'regime', {0: {'optimizer': args.optimizer,
-                                           'lr': args.lr,
-                                           'momentum': args.momentum,
-                                           'weight_decay': args.weight_decay}})
-    log.info('training regime: %s', regime)
-
-    results = ResultsLog(fields_list=['epoch', 'train_loss', 'val_loss',
-                                      'train_prec1', 'val_prec1', 'train_prec5', 'val_prec5'],
-                         format_list=['d'] + 6 * ['.3f'],
-                         path=os.path.join(save_path, 'results.csv'))
-
-    if 'cuda' in args.type and len(args.gpus)>1:
-        model = torch.nn.DataParallel(model, args.gpus)
-
-    model.type(args.type)
     optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
+    log.info('training regime: %s', regime)
 
     for epoch in range(args.start_epoch, args.epochs):
         optimizer = adjust_optimizer(optimizer, epoch, regime)
@@ -169,11 +165,6 @@ def main():
         # train for one epoch
         train_loss, train_prec1, train_prec5 = train(
             train_loader, model, criterion, epoch, optimizer)
-
-        kernel_img = model.features[0][0].kernel.data.clone()
-        kernel_img.add_(-kernel_img.min())
-        kernel_img.mul_(255/kernel_img.max())
-        save_image(kernel_img, 'kernel%s.jpg' % epoch)
 
         # evaluate on validation set
         val_loss, val_prec1, val_prec5 = validate(
@@ -201,13 +192,20 @@ def main():
                          train_prec1=train_prec1, val_prec1=val_prec1,
                          train_prec5=train_prec5, val_prec5=val_prec5))
 
-        results.info(epoch=epoch + 1, train_loss=train_loss, val_loss=val_loss,
-                     train_prec1=train_prec1, val_prec1=val_prec1,
-                     train_prec5=train_prec5, val_prec5=val_prec5)
-        results.plot(os.path.join(save_path, 'results.html'))
+        results.add(epoch=epoch + 1, train_loss=train_loss, val_loss=val_loss,
+                    train_error1=100 - train_prec1, val_error1=100 - val_prec1,
+                    train_error5=100 - train_prec5, val_error5=100 - val_prec5)
+        results.plot(x='epoch', y=['train_loss', 'val_loss'],
+                     title='Loss', ylabel='loss')
+        results.plot(x='epoch', y=['train_error1', 'val_error1'],
+                     title='Error@1', ylabel='error %')
+        results.plot(x='epoch', y=['train_error5', 'val_error5'],
+                     title='Error@5', ylabel='error %')
+        results.save()
 
 
 def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=None):
+    model = torch.nn.DataParallel(model, args.gpus)
     log = logging.getLogger('main')
     batch_time = AverageMeter()
     data_time = AverageMeter()
@@ -216,23 +214,25 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
     top5 = AverageMeter()
 
     end = time.time()
-    for i, (input, target) in enumerate(data_loader):
+    for i, (inputs, target) in enumerate(data_loader):
         # measure data loading time
         data_time.update(time.time() - end)
 
         target = target.cuda(async=True)
-        input_var = Variable(input, volatile=not training).type(args.type)
+        input_var = Variable(inputs, volatile=not training).type(args.type)
         target_var = Variable(target)
 
         # compute output
         output = model(input_var)
         loss = criterion(output, target_var)
+        if type(output) is list:
+            output = output[0]
 
         # measure accuracy and record loss
         prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
-        losses.update(loss.data[0], input.size(0))
-        top1.update(prec1[0], input.size(0))
-        top5.update(prec5[0], input.size(0))
+        losses.update(loss.data[0], inputs.size(0))
+        top1.update(prec1[0], inputs.size(0))
+        top5.update(prec5[0], inputs.size(0))
 
         if training:
             # compute gradient and do SGD step
@@ -244,10 +244,6 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
         batch_time.update(time.time() - end)
         end = time.time()
 
-        # if i % args.print_freq == 0:
-        #     log.info('TRAIN', extra={'epoch':epoch, 'current':i, 'total':len(data_loader),
-        #                        'time':batch_time.avg, 'data_time':data_time.avg,
-        #                        'loss':losses.avg, 'top1':top1.avg, 'top5':top5.avg})
         if i % args.print_freq == 0:
             log.info('{phase} - Epoch: [{0}][{1}/{2}]\t'
                      'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
@@ -255,7 +251,9 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
                      'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
                      'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
                      'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
-                         epoch, i, len(data_loader), phase='TRAINING' if training else 'EVALUATING', batch_time=batch_time,
+                         epoch, i, len(data_loader),
+                         phase='TRAINING' if training else 'EVALUATING',
+                         batch_time=batch_time,
                          data_time=data_time, loss=losses, top1=top1, top5=top5))
 
     return losses.avg, top1.avg, top5.avg

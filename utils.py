@@ -4,8 +4,13 @@ import json
 import logging.config
 import shutil
 import pandas as pd
-from bokeh.plotting import figure, output_file, save
+from bokeh.io import output_file, save, show
+from bokeh.plotting import figure
 from bokeh.layouts import column
+from bokeh.charts import Line, defaults
+
+defaults.width = 800
+defaults.height = 400
 
 
 def setup_logging(log_file='log.txt', path='logging.json', level=logging.INFO):
@@ -22,54 +27,42 @@ def setup_logging(log_file='log.txt', path='logging.json', level=logging.INFO):
 
 class ResultsLog(object):
 
-    def __init__(self, fields_list,
-                 format_list=None, delim=',',
-                 path='results.csv',
-                 level=logging.INFO):
+    def __init__(self, path='results.csv', plot_path=None):
         self.path = path
-        self.fields = fields_list
-        format_list = format_list or ['%f'] * len(self.fields)
-        self.format = delim.join(
-            ['{' + i + ':' + j + '}' for i, j in zip(self.fields, format_list)])
-        self.logger = logging.getLogger('results')
-        handler = logging.FileHandler(path, mode='w')
-        formatter = logging.Formatter('%(message)s')
-        handler.setFormatter(formatter)
-        self.logger.setLevel(logging.INFO)
-        self.logger.addHandler(handler)
-        self.logger.info(delim.join(self.fields))
+        self.plot_path = plot_path or (self.path + '.html')
+        self.figures = []
+        self.results = None
 
-    def info(self, *kargs, **kwargs):
-        self.logger.info(self.format.format(*kargs, **kwargs))
+    def add(self, **kwargs):
+        df = pd.DataFrame([kwargs.values()], columns=kwargs.keys())
+        if self.results is None:
+            self.results = df
+        else:
+            self.results = self.results.append(df, ignore_index=True)
 
-    def plot(self, plot_file=None):
-        plot_file = plot_file or (self.path + '.html')
-        if os.path.isfile(plot_file):
-            os.remove(plot_file)
-        PLOT = pd.read_csv(self.path)
+    def save(self, title='Training Results'):
+        if len(self.figures) > 0:
+            if os.path.isfile(self.plot_path):
+                os.remove(self.plot_path)
+            output_file(self.plot_path, title=title)
+            plot = column(*self.figures)
+            save(plot)
+            self.figures = []
+        self.results.to_csv(self.path, index=False, index_label=False)
 
-        width = 800
-        height = 400
+    def show(self):
+        if len(self.figures) > 0:
+            plot = column(*self.figures)
+            show(plot)
 
-        output_file(plot_file, title="Training Results")
+    def plot(self, *kargs, **kwargs):
+        line = Line(data=self.results, *kargs, **kwargs)
+        self.figures.append(line)
 
-        def draw_train_val(epoch, train, val, title):
-            g = figure(width=width, height=height, title=title)
-            g.line(epoch, train, color='red', legend="training")
-            g.circle(epoch, train, color='red', size=8)
-            g.line(epoch, val, color='blue', legend="validation")
-            g.circle(epoch, val, color='blue', size=8)
-            return g
-
-        g1 = draw_train_val(PLOT['epoch'], PLOT['train_loss'],
-                            PLOT['val_loss'], 'Loss')
-        g2 = draw_train_val(PLOT['epoch'], 100 - PLOT['train_prec1'],
-                            100 - PLOT['val_prec1'], 'Error @1')
-        g3 = draw_train_val(PLOT['epoch'], 100 - PLOT['train_prec5'],
-                            100 - PLOT['val_prec5'], 'Error @5')
-
-        p = column(g1, g2, g3)
-        save(p)
+    def image(self, *kargs, **kwargs):
+        fig = figure()
+        fig.image(*kargs, **kwargs)
+        self.figures.append(fig)
 
 
 def save_checkpoint(state, is_best, path='.', filename='checkpoint.pth.tar', save_all=False):
@@ -102,15 +95,18 @@ class AverageMeter(object):
 
 optimizers = {
     'SGD': torch.optim.SGD,
+    'ASGD': torch.optim.ASGD,
     'Adam': torch.optim.Adam,
+    'Adamax': torch.optim.Adamax,
     'Adagrad': torch.optim.Adagrad,
+    'Adadelta': torch.optim.Adadelta,
+    'Rprop': torch.optim.Rprop,
     'RMSprop': torch.optim.RMSprop
 }
 
 
 def adjust_optimizer(optimizer, epoch, config, verbose=True):
     """Reconfigures the optimizer according to epoch and config dict"""
-    adjustment = None
     if epoch not in config:
         return optimizer
     setting = config[epoch]
@@ -137,3 +133,8 @@ def accuracy(output, target, topk=(1,)):
         correct_k = correct[:k].view(-1).float().sum(0)
         res.append(correct_k.mul_(100.0 / batch_size))
     return res
+
+            # kernel_img = model.features[0][0].kernel.data.clone()
+            # kernel_img.add_(-kernel_img.min())
+            # kernel_img.mul_(255 / kernel_img.max())
+            # save_image(kernel_img, 'kernel%s.jpg' % epoch)
