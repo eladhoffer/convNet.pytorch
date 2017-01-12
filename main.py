@@ -116,7 +116,8 @@ def main():
             best_prec1 = checkpoint['best_prec1']
             model.load_state_dict(checkpoint['state_dict'])
             log.info("loaded checkpoint '%s' (epoch %s)",
-                     args.evaluate, checkpoint['epoch'])
+                     args.resume, checkpoint['epoch'])
+            results.load()
         else:
             log.error("no checkpoint found at '%s'", args.resume)
 

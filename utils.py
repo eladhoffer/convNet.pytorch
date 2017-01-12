@@ -50,6 +50,10 @@ class ResultsLog(object):
             self.figures = []
         self.results.to_csv(self.path, index=False, index_label=False)
 
+    def load(self):
+        if os.path.isfile(self.path):
+            self.results.read_csv(self.path)
+
     def show(self):
         if len(self.figures) > 0:
             plot = column(*self.figures)
