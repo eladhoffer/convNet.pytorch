@@ -14,7 +14,7 @@ def conv_bn(in_planes, out_planes, kernel_size, stride=1, padding=0):
     )
 
 
-class InceptionModule(nn.Container):
+class InceptionModule(nn.Module):
 
     def __init__(self, in_channels, n1x1_channels, n3x3r_channels,
                  n3x3_channels, dn3x3r_channels, dn3x3_channels,
@@ -64,7 +64,7 @@ class InceptionModule(nn.Container):
         return output
 
 
-class inception_v2(nn.Container):
+class inception_v2(nn.Module):
 
     def __init__(self, num_classes=1000, aux_classifiers=True):
         super(inception_v2, self).__init__()

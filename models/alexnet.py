@@ -2,7 +2,7 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 
 
-class AlexNetOWT_BN(nn.Container):
+class AlexNetOWT_BN(nn.Module):
 
     def __init__(self, num_classes=1000):
         super(AlexNetOWT_BN, self).__init__()

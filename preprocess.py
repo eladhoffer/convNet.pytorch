@@ -1,5 +1,6 @@
 import torch
 import torchvision.transforms as transforms
+import random
 
 _default_norm = transforms.Normalize(mean=3 * [0.5], std=3 * [0.5])
 _imagenet_norm = transforms.Normalize(mean=[0.485, 0.456, 0.406],
@@ -60,7 +61,7 @@ def inception_preproccess(input_size, normalize=_imagenet_norm):
             saturation=0.4,
         ),
         Lighting(0.1, _imagenet_pca['eigval'], _imagenet_pca['eigvec']),
-        normalize,
+        normalize
     ])
 
 
@@ -87,6 +88,7 @@ def get_transform(name='imagenet', input_size=None,
                               scale_size=scale_size, normalize=normalize)
 
 
+
 class Lighting(object):
     """Lighting noise(AlexNet - style PCA - based noise)"""
 
@@ -99,23 +101,23 @@ class Lighting(object):
         if self.alphastd == 0:
             return img
 
-        alpha = torch.Tensor(3).normal_(0, self.alphastd)
-        rgb = self.eigvec.clone()\
+        alpha = img.new().resize_(3).normal_(0, self.alphastd)
+        rgb = self.eigvec.type_as(img).clone()\
             .mul(alpha.view(1, 3).expand(3, 3))\
             .mul(self.eigval.view(1, 3).expand(3, 3))\
             .sum(1).squeeze()
 
-        img.add_(rgb.view(3, 1, 1).expand_as(img))
-        return img
+        return img.add(rgb.view(3, 1, 1).expand_as(img))
 
 
 class Grayscale(object):
 
     def __call__(self, img):
-        img[0].mul_(0.299).add_(0.587, img[1]).add_(0.114, img[2])
-        img[1].copy_(img[0])
-        img[2].copy_(img[0])
-        return img
+        gs = img.clone()
+        gs[0].mul_(0.299).add_(0.587, gs[1]).add_(0.114, gs[2])
+        gs[1].copy_(gs[0])
+        gs[2].copy_(gs[0])
+        return gs
 
 
 class Saturation(object):
@@ -124,11 +126,9 @@ class Saturation(object):
         self.var = var
 
     def __call__(self, img):
-        gs = Grayscale()(img.clone())
-        alpha = 1.0 + torch.torch.Tensor(1).uniform_(-self.var, self.var)[0]
-        img.lerp_(gs, alpha)
-
-        return img
+        gs = Grayscale()(img)
+        alpha = random.uniform(0, self.var)
+        return img.lerp(gs, alpha)
 
 
 class Brightness(object):
@@ -138,10 +138,8 @@ class Brightness(object):
 
     def __call__(self, img):
         gs = img.new().resize_as_(img).zero_()
-        alpha = 1.0 + torch.torch.Tensor(1).uniform_(-self.var, self.var)[0]
-        img.lerp_(gs, alpha)
-
-        return img
+        alpha = random.uniform(0, self.var)
+        return img.lerp(gs, alpha)
 
 
 class Contrast(object):
@@ -150,16 +148,14 @@ class Contrast(object):
         self.var = var
 
     def __call__(self, img):
-        gs = Grayscale()(img.clone())
+        gs = Grayscale()(img)
         gs.fill_(gs.mean())
-        alpha = 1.0 + torch.torch.Tensor(1).uniform_(-self.var, self.var)[0]
-        img.lerp_(gs, alpha)
-        return img
+        alpha = random.uniform(0, self.var)
+        return img.lerp(gs, alpha)
 
 
 class RandomOrder(object):
     """ Composes several transforms together in random order.
-    For example:
     """
 
     def __init__(self, transforms):
