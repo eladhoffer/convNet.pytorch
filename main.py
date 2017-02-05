@@ -78,9 +78,8 @@ def main():
     results_file = os.path.join(save_path, 'results.%s')
     results = ResultsLog(results_file % 'csv', results_file % 'html')
 
-    log = logging.getLogger('main')
-    log.info("saving to %s", save_path)
-    log.info("run arguments: %s", args)
+    logging.info("saving to %s", save_path)
+    logging.debug("run arguments: %s", args)
 
     if 'cuda' in args.type:
         args.gpus = [int(i) for i in args.gpus.split(',')]
@@ -90,7 +89,7 @@ def main():
         args.gpus = None
 
     # create model
-    log.info("creating model %s", args.model)
+    logging.info("creating model %s", args.model)
     model = import_module('.' + args.model, 'models').model
     model_config = {'input_size': args.input_size, 'dataset': args.dataset}
 
@@ -98,7 +97,7 @@ def main():
         model_config = dict(model_config, **literal_eval(args.model_config))
 
     model = model(**model_config)
-    log.info("created model with configuration: %s", model_config)
+    logging.info("created model with configuration: %s", model_config)
 
     # optionally resume from a checkpoint
     if args.evaluate:
@@ -106,23 +105,26 @@ def main():
             parser.error('invalid checkpoint: {}'.format(args.evaluate))
         checkpoint = torch.load(args.evaluate)
         model.load_state_dict(checkpoint['state_dict'])
-        log.info("loaded checkpoint '%s' (epoch %s)",
+        logging.info("loaded checkpoint '%s' (epoch %s)",
                  args.evaluate, checkpoint['epoch'])
     elif args.resume:
-        if os.path.isfile(args.resume):
-            log.info("loading checkpoint '%s'", args.resume)
-            checkpoint = torch.load(args.resume)
+        checkpoint_file = args.resume
+        if os.path.isdir(checkpoint_file):
+            checkpoint_file = os.path.join(checkpoint_file, 'model_best.pth.tar')
+            results.load(os.path.join(checkpoint_file, 'results.csv'))
+        if os.path.isfile(checkpoint_file):
+            logging.info("loading checkpoint '%s'", args.resume)
+            checkpoint = torch.load(checkpoint_file)
             args.start_epoch = checkpoint['epoch']
             best_prec1 = checkpoint['best_prec1']
             model.load_state_dict(checkpoint['state_dict'])
-            log.info("loaded checkpoint '%s' (epoch %s)",
-                     args.resume, checkpoint['epoch'])
-            results.load()
+            logging.info("loaded checkpoint '%s' (epoch %s)",
+                    checkpoint_file, checkpoint['epoch'])
         else:
-            log.error("no checkpoint found at '%s'", args.resume)
+            logging.error("no checkpoint found at '%s'", args.resume)
 
     num_parameters = sum([l.nelement() for l in model.parameters()])
-    log.info("number of parameters: %d", num_parameters)
+    logging.info("number of parameters: %d", num_parameters)
 
     # Data loading code
     default_transform = {
@@ -158,7 +160,7 @@ def main():
         num_workers=args.workers, pin_memory=True)
 
     optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
-    log.info('training regime: %s', regime)
+    logging.info('training regime: %s', regime)
 
     for epoch in range(args.start_epoch, args.epochs):
         optimizer = adjust_optimizer(optimizer, epoch, regime)
@@ -182,7 +184,7 @@ def main():
             'best_prec1': best_prec1,
             'regime': regime
         }, is_best, path=save_path)
-        log.info('\n Epoch: {0}\t'
+        logging.info('\n Epoch: {0}\t'
                  'Training Loss {train_loss:.4f} \t'
                  'Training Prec@1 {train_prec1:.3f} \t'
                  'Training Prec@5 {train_prec5:.3f} \t'
@@ -207,7 +209,6 @@ def main():
 
 def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=None):
     model = torch.nn.DataParallel(model, args.gpus)
-    log = logging.getLogger('main')
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
@@ -246,7 +247,7 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
         end = time.time()
 
         if i % args.print_freq == 0:
-            log.info('{phase} - Epoch: [{0}][{1}/{2}]\t'
+            logging.info('{phase} - Epoch: [{0}][{1}/{2}]\t'
                      'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                      'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
                      'Loss {loss.val:.4f} ({loss.avg:.4f})\t'

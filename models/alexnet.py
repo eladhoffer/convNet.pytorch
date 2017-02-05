@@ -47,6 +47,23 @@ class AlexNetOWT_BN(nn.Module):
             20: {'lr': 5e-4},
             25: {'lr': 1e-4}
         }
+        normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                         std=[0.229, 0.224, 0.225])
+        self.input_transform = {
+            'train': transforms.Compose([
+                transforms.Scale(256),
+                transforms.RandomCrop(224),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                normalize
+            ]),
+            'eval': transforms.Compose([
+                transforms.Scale(256),
+                transforms.CenterCrop(224),
+                transforms.ToTensor(),
+                normalize
+            ])
+        }
 
     def forward(self, x):
         x = self.features(x)
@@ -56,5 +73,5 @@ class AlexNetOWT_BN(nn.Module):
 
 
 def model(**kwargs):
-    num_classes = getattr(kwargs,'num_classes', 1000)
+    num_classes = getattr(kwargs, 'num_classes', 1000)
     return AlexNetOWT_BN(num_classes)

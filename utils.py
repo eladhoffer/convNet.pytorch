@@ -1,6 +1,5 @@
 import os
 import torch
-import json
 import logging.config
 import shutil
 import pandas as pd
@@ -11,18 +10,22 @@ from bokeh.charts import Line, defaults
 
 defaults.width = 800
 defaults.height = 400
+defaults.tools = 'pan,box_zoom,wheel_zoom,box_select,hover,resize,reset,save'
 
 
-def setup_logging(log_file='log.txt', path='logging.json', level=logging.INFO):
+def setup_logging(log_file='log.txt'):
     """Setup logging configuration
     """
-    if os.path.exists(path):
-        with open(path, 'rt') as f:
-            config = json.load(f)
-        config['handlers']['log_file']['filename'] = log_file
-        logging.config.dictConfig(config)
-    else:
-        logging.basicConfig(level=level)
+    logging.basicConfig(level=logging.DEBUG,
+                        format="%(asctime)s - %(levelname)s - %(message)s",
+                        datefmt="%Y-%m-%d %H:%M:%S",
+                        filename=log_file,
+                        filemode='w')
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(message)s')
+    console.setFormatter(formatter)
+    logging.getLogger('').addHandler(console)
 
 
 class ResultsLog(object):
@@ -50,9 +53,10 @@ class ResultsLog(object):
             self.figures = []
         self.results.to_csv(self.path, index=False, index_label=False)
 
-    def load(self):
-        if os.path.isfile(self.path):
-            self.results.read_csv(self.path)
+    def load(self, path=None):
+        path = path or self.path
+        if os.path.isfile(path):
+            self.results.read_csv(path)
 
     def show(self):
         if len(self.figures) > 0:
@@ -76,7 +80,7 @@ def save_checkpoint(state, is_best, path='.', filename='checkpoint.pth.tar', sav
         shutil.copyfile(filename, os.path.join(path, 'model_best.pth.tar'))
     if save_all:
         shutil.copyfile(filename, os.path.join(
-            path, 'checkpoint_epoch%s.pth.tar' % state['epoch']))
+            path, 'checkpoint_epoch_%s.pth.tar' % state['epoch']))
 
 
 class AverageMeter(object):
@@ -97,7 +101,7 @@ class AverageMeter(object):
         self.count += n
         self.avg = self.sum / self.count
 
-optimizers = {
+__optimizers = {
     'SGD': torch.optim.SGD,
     'ASGD': torch.optim.ASGD,
     'Adam': torch.optim.Adam,
@@ -109,17 +113,29 @@ optimizers = {
 }
 
 
-def adjust_optimizer(optimizer, epoch, config, verbose=True):
+def adjust_optimizer(optimizer, epoch, config):
     """Reconfigures the optimizer according to epoch and config dict"""
-    if epoch not in config:
+    def modify_optimizer(optimizer, setting):
+        if 'optimizer' in setting:
+            optimizer = __optimizers[setting['optimizer']](
+                optimizer.param_groups)
+            logging.debug('OPTIMIZER - setting method = %s' %
+                          setting['optimizer'])
+        for param_group in optimizer.param_groups:
+            for key in param_group.iterkeys():
+                if key in setting:
+                    logging.debug('OPTIMIZER - setting %s = %s' %
+                                  (key, setting[key]))
+                    param_group[key] = setting[key]
         return optimizer
-    setting = config[epoch]
-    # if 'optimizer' in setting:
-    # optimizer = setting['optimizer'](optimizer.params_dict)
-    for param_group in optimizer.state_dict()['param_groups']:
-        for key in param_group.iterkeys():
-            if key in setting:
-                param_group[key] = setting[key]
+
+    if callable(config):
+        optimizer = modify_optimizer(optimizer, config(epoch))
+    else:
+        for e in range(epoch):  # run over all epochs - sticky setting
+            if e in config:
+                optimizer = modify_optimizer(optimizer, config[e])
+
     return optimizer
 
 
@@ -138,7 +154,7 @@ def accuracy(output, target, topk=(1,)):
         res.append(correct_k.mul_(100.0 / batch_size))
     return res
 
-            # kernel_img = model.features[0][0].kernel.data.clone()
-            # kernel_img.add_(-kernel_img.min())
-            # kernel_img.mul_(255 / kernel_img.max())
-            # save_image(kernel_img, 'kernel%s.jpg' % epoch)
+    # kernel_img = model.features[0][0].kernel.data.clone()
+    # kernel_img.add_(-kernel_img.min())
+    # kernel_img.mul_(255 / kernel_img.max())
+    # save_image(kernel_img, 'kernel%s.jpg' % epoch)
