@@ -18,8 +18,8 @@ from ast import literal_eval
 from torchvision.utils import save_image
 
 model_names = sorted(name for name in models.__dict__
-    if name.islower() and not name.startswith("__")
-    and callable(models.__dict__[name]))
+                     if name.islower() and not name.startswith("__")
+                     and callable(models.__dict__[name]))
 
 parser = argparse.ArgumentParser(description='PyTorch ConvNet Training')
 
@@ -32,8 +32,8 @@ parser.add_argument('--dataset', metavar='DATASET', default='imagenet',
 parser.add_argument('--model', '-a', metavar='MODEL', default='alexnet',
                     choices=model_names,
                     help='model architecture: ' +
-                        ' | '.join(model_names) +
-                        ' (default: alexnet)')
+                    ' | '.join(model_names) +
+                    ' (default: alexnet)')
 parser.add_argument('--input_size', type=int, default=None,
                     help='image input size')
 parser.add_argument('--model_config', default='',
@@ -111,20 +111,21 @@ def main():
         checkpoint = torch.load(args.evaluate)
         model.load_state_dict(checkpoint['state_dict'])
         logging.info("loaded checkpoint '%s' (epoch %s)",
-                 args.evaluate, checkpoint['epoch'])
+                     args.evaluate, checkpoint['epoch'])
     elif args.resume:
         checkpoint_file = args.resume
         if os.path.isdir(checkpoint_file):
             results.load(os.path.join(checkpoint_file, 'results.csv'))
-            checkpoint_file = os.path.join(checkpoint_file, 'model_best.pth.tar')
+            checkpoint_file = os.path.join(
+                checkpoint_file, 'model_best.pth.tar')
         if os.path.isfile(checkpoint_file):
             logging.info("loading checkpoint '%s'", args.resume)
             checkpoint = torch.load(checkpoint_file)
-            args.start_epoch = checkpoint['epoch']-1
+            args.start_epoch = checkpoint['epoch'] - 1
             best_prec1 = checkpoint['best_prec1']
             model.load_state_dict(checkpoint['state_dict'])
             logging.info("loaded checkpoint '%s' (epoch %s)",
-                    checkpoint_file, checkpoint['epoch'])
+                         checkpoint_file, checkpoint['epoch'])
         else:
             logging.error("no checkpoint found at '%s'", args.resume)
 
@@ -190,15 +191,15 @@ def main():
             'regime': regime
         }, is_best, path=save_path)
         logging.info('\n Epoch: {0}\t'
-                 'Training Loss {train_loss:.4f} \t'
-                 'Training Prec@1 {train_prec1:.3f} \t'
-                 'Training Prec@5 {train_prec5:.3f} \t'
-                 'Validation Loss {val_loss:.4f} \t'
-                 'Validation Prec@1 {val_prec1:.3f} \t'
-                 'Validation Prec@5 {val_prec5:.3f} \n'
-                 .format(epoch + 1, train_loss=train_loss, val_loss=val_loss,
-                         train_prec1=train_prec1, val_prec1=val_prec1,
-                         train_prec5=train_prec5, val_prec5=val_prec5))
+                     'Training Loss {train_loss:.4f} \t'
+                     'Training Prec@1 {train_prec1:.3f} \t'
+                     'Training Prec@5 {train_prec5:.3f} \t'
+                     'Validation Loss {val_loss:.4f} \t'
+                     'Validation Prec@1 {val_prec1:.3f} \t'
+                     'Validation Prec@5 {val_prec5:.3f} \n'
+                     .format(epoch + 1, train_loss=train_loss, val_loss=val_loss,
+                             train_prec1=train_prec1, val_prec1=val_prec1,
+                             train_prec5=train_prec5, val_prec5=val_prec5))
 
         results.add(epoch=epoch + 1, train_loss=train_loss, val_loss=val_loss,
                     train_error1=100 - train_prec1, val_error1=100 - val_prec1,
@@ -213,7 +214,8 @@ def main():
 
 
 def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=None):
-    model = torch.nn.DataParallel(model, args.gpus)
+    if args.gpus and len(args.gpus) > 1:
+        model = torch.nn.DataParallel(model, args.gpus)
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
@@ -224,9 +226,9 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
     for i, (inputs, target) in enumerate(data_loader):
         # measure data loading time
         data_time.update(time.time() - end)
-
-        target = target.cuda(async=True)
-        input_var = Variable(inputs, volatile=not training).type(args.type)
+        if args.gpus is not None:
+            target = target.cuda(async=True)
+        input_var = Variable(inputs.type(args.type), volatile=not training)
         target_var = Variable(target)
 
         # compute output
@@ -253,15 +255,15 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
 
         if i % args.print_freq == 0:
             logging.info('{phase} - Epoch: [{0}][{1}/{2}]\t'
-                     'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                     'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
-                     'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                     'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
-                     'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
-                         epoch, i, len(data_loader),
-                         phase='TRAINING' if training else 'EVALUATING',
-                         batch_time=batch_time,
-                         data_time=data_time, loss=losses, top1=top1, top5=top5))
+                         'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                         'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
+                         'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
+                         'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
+                         'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
+                             epoch, i, len(data_loader),
+                             phase='TRAINING' if training else 'EVALUATING',
+                             batch_time=batch_time,
+                             data_time=data_time, loss=losses, top1=top1, top5=top5))
 
     return losses.avg, top1.avg, top5.avg
 
