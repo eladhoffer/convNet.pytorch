@@ -122,7 +122,7 @@ def adjust_optimizer(optimizer, epoch, config):
             logging.debug('OPTIMIZER - setting method = %s' %
                           setting['optimizer'])
         for param_group in optimizer.param_groups:
-            for key in param_group.iterkeys():
+            for key in param_group.keys():
                 if key in setting:
                     logging.debug('OPTIMIZER - setting %s = %s' %
                                   (key, setting[key]))

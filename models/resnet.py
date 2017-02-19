@@ -2,6 +2,7 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 import math
 
+__all__ = ['resnet']
 
 def conv3x3(in_planes, out_planes, stride=1):
     "3x3 convolution with padding"
@@ -169,11 +170,11 @@ class ResNet_cifar10(ResNet):
                                bias=False)
         self.bn1 = nn.BatchNorm2d(16)
         self.relu = nn.ReLU(inplace=True)
-        self.maxpool = lambda(x): x
+        self.maxpool = lambda x: x
         self.layer1 = self._make_layer(block, 16, n)
         self.layer2 = self._make_layer(block, 32, n, stride=2)
         self.layer3 = self._make_layer(block, 64, n, stride=2)
-        self.layer4 = lambda(x): x
+        self.layer4 = lambda x: x
         self.avgpool = nn.AvgPool2d(8)
         self.fc = nn.Linear(64, num_classes)
 
@@ -187,7 +188,7 @@ class ResNet_cifar10(ResNet):
         }
 
 
-def model(**kwargs):
+def resnet(**kwargs):
     num_classes, depth, dataset = map(
         kwargs.get, ['num_classes', 'depth', 'dataset'])
     if dataset == 'imagenet':

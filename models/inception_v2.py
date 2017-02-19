@@ -3,6 +3,7 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 import math
 
+__all__ = ['inception_v2']
 
 def conv_bn(in_planes, out_planes, kernel_size, stride=1, padding=0):
     "convolution with batchnorm, relu"
@@ -64,7 +65,7 @@ class InceptionModule(nn.Module):
         return output
 
 
-class inception_v2(nn.Module):
+class Inception_v2(nn.Module):
 
     def __init__(self, num_classes=1000, aux_classifiers=True):
         super(inception_v2, self).__init__()
@@ -147,6 +148,6 @@ class inception_v2(nn.Module):
         return output
 
 
-def model(**kwargs):
+def inception_v2(**kwargs):
     num_classes = getattr(kwargs, 'num_classes', 1000)
-    return inception_v2(num_classes=num_classes)
+    return Inception_v2(num_classes=num_classes)

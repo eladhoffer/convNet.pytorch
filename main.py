@@ -8,15 +8,18 @@ import torch.nn.parallel
 import torch.backends.cudnn as cudnn
 import torch.optim
 import torch.utils.data
+import models
 from torch.autograd import Variable
 from data import get_dataset
 from preprocess import get_transform
 from utils import *
-from importlib import import_module
 from datetime import datetime
 from ast import literal_eval
 from torchvision.utils import save_image
 
+model_names = sorted(name for name in models.__dict__
+    if name.islower() and not name.startswith("__")
+    and callable(models.__dict__[name]))
 
 parser = argparse.ArgumentParser(description='PyTorch ConvNet Training')
 
@@ -27,8 +30,10 @@ parser.add_argument('--save', metavar='SAVE', default='',
 parser.add_argument('--dataset', metavar='DATASET', default='imagenet',
                     help='dataset name or folder')
 parser.add_argument('--model', '-a', metavar='MODEL', default='alexnet',
-                    help='model architecture: alexnet | resnet | ... '
-                         '(default: alexnet)')
+                    choices=model_names,
+                    help='model architecture: ' +
+                        ' | '.join(model_names) +
+                        ' (default: alexnet)')
 parser.add_argument('--input_size', type=int, default=None,
                     help='image input size')
 parser.add_argument('--model_config', default='',
@@ -90,7 +95,7 @@ def main():
 
     # create model
     logging.info("creating model %s", args.model)
-    model = import_module('.' + args.model, 'models').model
+    model = model = models.__dict__[args.model]
     model_config = {'input_size': args.input_size, 'dataset': args.dataset}
 
     if args.model_config is not '':
@@ -110,12 +115,12 @@ def main():
     elif args.resume:
         checkpoint_file = args.resume
         if os.path.isdir(checkpoint_file):
-            checkpoint_file = os.path.join(checkpoint_file, 'model_best.pth.tar')
             results.load(os.path.join(checkpoint_file, 'results.csv'))
+            checkpoint_file = os.path.join(checkpoint_file, 'model_best.pth.tar')
         if os.path.isfile(checkpoint_file):
             logging.info("loading checkpoint '%s'", args.resume)
             checkpoint = torch.load(checkpoint_file)
-            args.start_epoch = checkpoint['epoch']
+            args.start_epoch = checkpoint['epoch']-1
             best_prec1 = checkpoint['best_prec1']
             model.load_state_dict(checkpoint['state_dict'])
             logging.info("loaded checkpoint '%s' (epoch %s)",

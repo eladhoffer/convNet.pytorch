@@ -1,7 +1,7 @@
 import os
 import torchvision.datasets as datasets
 
-__DATASETS_DEFAULT_PATH = '/media/ehoffer/SSD/Datasets/'#os.path.expanduser('~/Datasets')
+__DATASETS_DEFAULT_PATH = '/media/SSD/Datasets/'
 
 
 def get_dataset(name, split='train', transform=None,

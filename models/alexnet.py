@@ -1,6 +1,7 @@
 import torch.nn as nn
 import torchvision.transforms as transforms
 
+__all__ = ['alexnet']
 
 class AlexNetOWT_BN(nn.Module):
 
@@ -72,6 +73,6 @@ class AlexNetOWT_BN(nn.Module):
         return x
 
 
-def model(**kwargs):
+def alexnet(**kwargs):
     num_classes = getattr(kwargs, 'num_classes', 1000)
     return AlexNetOWT_BN(num_classes)
