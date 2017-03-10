@@ -1,7 +1,7 @@
 import os
 import torchvision.datasets as datasets
 
-__DATASETS_DEFAULT_PATH = '/media/SSD/Datasets/'
+__DATASETS_DEFAULT_PATH = '/media/ssd/Datasets/'
 
 
 def get_dataset(name, split='train', transform=None,
@@ -23,6 +23,12 @@ def get_dataset(name, split='train', transform=None,
     elif name == 'mnist':
         return datasets.MNIST(root=root,
                               train=train,
+                              transform=transform,
+                              target_transform=target_transform,
+                              download=download)
+    elif name == 'stl10':
+        return datasets.STL10(root=root,
+                              split=split,
                               transform=transform,
                               target_transform=target_transform,
                               download=download)

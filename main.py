@@ -95,7 +95,7 @@ def main():
 
     # create model
     logging.info("creating model %s", args.model)
-    model = model = models.__dict__[args.model]
+    model = models.__dict__[args.model]
     model_config = {'input_size': args.input_size, 'dataset': args.dataset}
 
     if args.model_config is not '':
