@@ -35,11 +35,11 @@ class Model(nn.Module):
         super(Model, self).__init__()
         self.model = nn.Sequential(...)
 
-        self.regime = {
-            0: {'optimizer': 'SGD', 'lr': 1e-2,
+        self.regime = [
+            {'epoch': 0, 'optimizer': 'SGD', 'lr': 1e-2,
                 'weight_decay': 5e-4, 'momentum': 0.9},
-            15: {'lr': 1e-3, 'weight_decay': 0}
-        }
+            {'epoch': 15, 'lr': 1e-3, 'weight_decay': 0}
+        ]
 
         self.input_transform = {
             'train': transforms.Compose([...]),
