@@ -117,13 +117,13 @@ class Inception_v2(nn.Module):
                 nn.Conv2d(768, self.num_classes, 1),
             )
 
-        self.regime = {
-            0: {'optimizer': 'SGD', 'lr': 1e-1,
-                'weight_decay': 1e-4, 'momentum': 0.9},
-            15: {'lr': 1e-2},
-            30: {'lr': 1e-3, 'weight_decay': 0},
-            40: {'lr': 1e-4}
-        }
+        self.regime = [
+            {'epoch': 0, 'optimizer': 'SGD', 'lr': 1e-1,
+             'weight_decay': 1e-4, 'momentum': 0.9},
+            {'epoch': 30, 'lr': 1e-2},
+            {'epoch': 60, 'lr': 1e-3, 'weight_decay': 0},
+            {'epoch': 90, 'lr': 1e-4}
+        ]
 
         class aux_loss(nn.Module):
             def __init__(self):

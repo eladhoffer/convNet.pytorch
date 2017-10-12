@@ -190,13 +190,13 @@ class ResNeXt_imagenet(ResNeXt):
         self.fc = nn.Linear(1024 * block.expansion, num_classes)
 
         init_model(self)
-        self.regime = {
-            0: {'optimizer': 'SGD', 'lr': 1e-1,
-                'weight_decay': 1e-4, 'momentum': 0.9},
-            30: {'lr': 1e-2},
-            60: {'lr': 1e-3, 'weight_decay': 0},
-            90: {'lr': 1e-4}
-        }
+        self.regime = [
+            {'epoch': 0, 'optimizer': 'SGD', 'lr': 1e-1,
+             'weight_decay': 1e-4, 'momentum': 0.9},
+            {'epoch': 30, 'lr': 1e-2},
+            {'epoch': 60, 'lr': 1e-3, 'weight_decay': 0},
+            {'epoch': 90, 'lr': 1e-4}
+        ]
 
 
 class ResNeXt_cifar10(ResNeXt):
@@ -222,13 +222,13 @@ class ResNeXt_cifar10(ResNeXt):
         self.fc = nn.Linear(64, num_classes)
 
         init_model(self)
-        self.regime = {
-            0: {'optimizer': 'SGD', 'lr': 1e-1,
-                'weight_decay': 1e-4, 'momentum': 0.9},
-            30: {'lr': 1e-2},
-            60: {'lr': 1e-3, 'weight_decay': 0},
-            90: {'lr': 1e-4}
-        }
+        self.regime = [
+            {'epoch': 0, 'optimizer': 'SGD', 'lr': 1e-1,
+             'weight_decay': 1e-4, 'momentum': 0.9},
+            {'epoch': 81, 'lr': 1e-2},
+            {'epoch': 122, 'lr': 1e-3, 'weight_decay': 0},
+            {'epoch': 164, 'lr': 1e-4}
+        ]
 
 
 def resnext(**kwargs):

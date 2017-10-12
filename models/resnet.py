@@ -4,6 +4,7 @@ import math
 
 __all__ = ['resnet']
 
+
 def conv3x3(in_planes, out_planes, stride=1):
     "3x3 convolution with padding"
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
@@ -150,13 +151,13 @@ class ResNet_imagenet(ResNet):
         self.fc = nn.Linear(512 * block.expansion, num_classes)
 
         init_model(self)
-        self.regime = {
-            0: {'optimizer': 'SGD', 'lr': 1e-1,
-                'weight_decay': 1e-4, 'momentum': 0.9},
-            30: {'lr': 1e-2},
-            60: {'lr': 1e-3, 'weight_decay': 0},
-            90: {'lr': 1e-4}
-        }
+        self.regime = [
+            {'epoch': 0, 'optimizer': 'SGD', 'lr': 1e-1,
+             'weight_decay': 1e-4, 'momentum': 0.9},
+            {'epoch': 30, 'lr': 1e-2},
+            {'epoch': 60, 'lr': 1e-3, 'weight_decay': 0},
+            {'epoch': 90, 'lr': 1e-4}
+        ]
 
 
 class ResNet_cifar10(ResNet):
@@ -179,13 +180,13 @@ class ResNet_cifar10(ResNet):
         self.fc = nn.Linear(64, num_classes)
 
         init_model(self)
-        self.regime = {
-            0: {'optimizer': 'SGD', 'lr': 1e-1,
-                'weight_decay': 1e-4, 'momentum': 0.9},
-            81: {'lr': 1e-2},
-            122: {'lr': 1e-3, 'weight_decay': 0},
-            164: {'lr': 1e-4}
-        }
+        self.regime = [
+            {'epoch': 0, 'optimizer': 'SGD', 'lr': 1e-1,
+             'weight_decay': 1e-4, 'momentum': 0.9},
+            {'epoch': 81, 'lr': 1e-2},
+            {'epoch': 122, 'lr': 1e-3, 'weight_decay': 0},
+            {'epoch': 164, 'lr': 1e-4}
+        ]
 
 
 def resnet(**kwargs):

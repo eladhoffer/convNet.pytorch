@@ -3,6 +3,7 @@ import torchvision.transforms as transforms
 
 __all__ = ['alexnet']
 
+
 class AlexNetOWT_BN(nn.Module):
 
     def __init__(self, num_classes=1000):
@@ -40,14 +41,14 @@ class AlexNetOWT_BN(nn.Module):
             nn.Linear(4096, num_classes)
         )
 
-        self.regime = {
-            0: {'optimizer': 'SGD', 'lr': 1e-2,
+        self.regime = [
+            {'epoch': 0, 'optimizer': 'SGD', 'lr': 1e-2,
                 'weight_decay': 5e-4, 'momentum': 0.9},
-            10: {'lr': 5e-3},
-            15: {'lr': 1e-3, 'weight_decay': 0},
-            20: {'lr': 5e-4},
-            25: {'lr': 1e-4}
-        }
+            {'epoch': 10, 'lr': 5e-3},
+            {'epoch': 15, 'lr': 1e-3, 'weight_decay': 0},
+            {'epoch': 20, 'lr': 5e-4},
+            {'epoch': 25, 'lr': 1e-4}
+        ]
         normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                          std=[0.229, 0.224, 0.225])
         self.input_transform = {

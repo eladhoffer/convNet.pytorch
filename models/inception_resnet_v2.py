@@ -230,13 +230,13 @@ class InceptionResnetV2(nn.Module):
                 return self.loss(outputs[0], target) +\
                     0.4 * (self.loss(outputs[1], target))
         self.criterion = aux_loss
-        self.regime = {
-            0: {'optimizer': 'SGD', 'lr': 1e-1,
-                'weight_decay': 1e-4, 'momentum': 0.9},
-            30: {'lr': 1e-2},
-            60: {'lr': 1e-3, 'weight_decay': 0},
-            90: {'lr': 1e-4}
-        }
+        self.regime = [
+            {'epoch': 0, 'optimizer': 'SGD', 'lr': 1e-1,
+             'weight_decay': 1e-4, 'momentum': 0.9},
+            {'epoch': 30, 'lr': 1e-2},
+            {'epoch': 60, 'lr': 1e-3, 'weight_decay': 0},
+            {'epoch': 90, 'lr': 1e-4}
+        ]
 
     def forward(self, x):
         x = self.stem(x)  # (B, 192, 35, 35)
