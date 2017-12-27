@@ -80,9 +80,11 @@ def main():
     if not os.path.exists(save_path):
         os.makedirs(save_path)
 
-    setup_logging(os.path.join(save_path, 'log_%s.txt' % time_stamp))
-    results_file = os.path.join(save_path, 'results.%s')
-    results = ResultsLog(results_file % 'csv', results_file % 'html')
+    setup_logging(os.path.join(save_path, 'log.txt'),
+                  resume=args.resume is not '')
+    results_path = os.path.join(save_path, 'results')
+    results = ResultsLog(
+        results_path, title='Training Results - %s' % args.save)
 
     logging.info("saving to %s", save_path)
     logging.debug("run arguments: %s", args)
@@ -148,12 +150,12 @@ def main():
                                         'weight_decay': args.weight_decay}])
 
     # define loss function (criterion) and optimizer
-    criterion=getattr(model, 'criterion', nn.CrossEntropyLoss)()
+    criterion = getattr(model, 'criterion', nn.CrossEntropyLoss)()
     criterion.type(args.type)
     model.type(args.type)
 
-    val_data=get_dataset(args.dataset, 'val', transform['eval'])
-    val_loader=torch.utils.data.DataLoader(
+    val_data = get_dataset(args.dataset, 'val', transform['eval'])
+    val_loader = torch.utils.data.DataLoader(
         val_data,
         batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
@@ -162,27 +164,27 @@ def main():
         validate(val_loader, model, criterion, 0)
         return
 
-    train_data=get_dataset(args.dataset, 'train', transform['train'])
-    train_loader=torch.utils.data.DataLoader(
+    train_data = get_dataset(args.dataset, 'train', transform['train'])
+    train_loader = torch.utils.data.DataLoader(
         train_data,
         batch_size=args.batch_size, shuffle=True,
         num_workers=args.workers, pin_memory=True)
 
-    optimizer=OptimRegime(model.parameters(), regime)
+    optimizer = OptimRegime(model.parameters(), regime)
     logging.info('training regime: %s', regime)
 
     for epoch in range(args.start_epoch, args.epochs):
         # train for one epoch
-        train_loss, train_prec1, train_prec5=train(
+        train_loss, train_prec1, train_prec5 = train(
             train_loader, model, criterion, epoch, optimizer)
 
         # evaluate on validation set
-        val_loss, val_prec1, val_prec5=validate(
+        val_loss, val_prec1, val_prec5 = validate(
             val_loader, model, criterion, epoch)
 
         # remember best prec@1 and save checkpoint
-        is_best=val_prec1 > best_prec1
-        best_prec1=max(val_prec1, best_prec1)
+        is_best = val_prec1 > best_prec1
+        best_prec1 = max(val_prec1, best_prec1)
         save_checkpoint({
             'epoch': epoch + 1,
             'model': args.model,
@@ -206,40 +208,43 @@ def main():
                     train_error1=100 - train_prec1, val_error1=100 - val_prec1,
                     train_error5=100 - train_prec5, val_error5=100 - val_prec5)
         results.plot(x='epoch', y=['train_loss', 'val_loss'],
+                     legend=['training', 'validation'],
                      title='Loss', ylabel='loss')
         results.plot(x='epoch', y=['train_error1', 'val_error1'],
+                     legend=['training', 'validation'],
                      title='Error@1', ylabel='error %')
         results.plot(x='epoch', y=['train_error5', 'val_error5'],
+                     legend=['training', 'validation'],
                      title='Error@5', ylabel='error %')
         results.save()
 
 
 def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=None):
     if args.gpus and len(args.gpus) > 1:
-        model=torch.nn.DataParallel(model, args.gpus)
-    batch_time=AverageMeter()
-    data_time=AverageMeter()
-    losses=AverageMeter()
-    top1=AverageMeter()
-    top5=AverageMeter()
+        model = torch.nn.DataParallel(model, args.gpus)
+    batch_time = AverageMeter()
+    data_time = AverageMeter()
+    losses = AverageMeter()
+    top1 = AverageMeter()
+    top5 = AverageMeter()
 
-    end=time.time()
+    end = time.time()
     for i, (inputs, target) in enumerate(data_loader):
         # measure data loading time
         data_time.update(time.time() - end)
         if args.gpus is not None:
-            target=target.cuda(async=True)
-        input_var=Variable(inputs.type(args.type), volatile=not training)
-        target_var=Variable(target)
+            target = target.cuda(async=True)
+        input_var = Variable(inputs.type(args.type), volatile=not training)
+        target_var = Variable(target)
 
         # compute output
-        output=model(input_var)
-        loss=criterion(output, target_var)
+        output = model(input_var)
+        loss = criterion(output, target_var)
         if type(output) is list:
-            output=output[0]
+            output = output[0]
 
         # measure accuracy and record loss
-        prec1, prec5=accuracy(output.data, target, topk=(1, 5))
+        prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
         losses.update(loss.data[0], inputs.size(0))
         top1.update(prec1[0], inputs.size(0))
         top5.update(prec5[0], inputs.size(0))
@@ -253,7 +258,7 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
 
         # measure elapsed time
         batch_time.update(time.time() - end)
-        end=time.time()
+        end = time.time()
 
         if i % args.print_freq == 0:
             logging.info('{phase} - Epoch: [{0}][{1}/{2}]\t'

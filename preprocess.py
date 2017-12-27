@@ -22,7 +22,7 @@ def scale_crop(input_size, scale_size=None, normalize=__imagenet_stats):
         transforms.Normalize(**normalize),
     ]
     if scale_size != input_size:
-        t_list = [transforms.Scale(scale_size)] + t_list
+        t_list = [transforms.Resize(scale_size)] + t_list
 
     return transforms.Compose(t_list)
 
@@ -34,7 +34,7 @@ def scale_random_crop(input_size, scale_size=None, normalize=__imagenet_stats):
         transforms.Normalize(**normalize),
     ]
     if scale_size != input_size:
-        t_list = [transforms.Scale(scale_size)] + t_list
+        t_list = [transforms.Resize(scale_size)] + t_list
 
     transforms.Compose(t_list)
 
@@ -51,14 +51,14 @@ def pad_random_crop(input_size, scale_size=None, normalize=__imagenet_stats):
 
 def inception_preproccess(input_size, normalize=__imagenet_stats):
     return transforms.Compose([
-        transforms.RandomSizedCrop(input_size),
+        transforms.RandomResizedCrop(input_size),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize(**normalize)
     ])
 def inception_color_preproccess(input_size, normalize=__imagenet_stats):
     return transforms.Compose([
-        transforms.RandomSizedCrop(input_size),
+        transforms.RandomResizedCrop(input_size),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         ColorJitter(
