@@ -65,12 +65,14 @@ parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')
 parser.add_argument('-e', '--evaluate', type=str, metavar='FILE',
                     help='evaluate model FILE on validation set')
-
+parser.add_argument('--seed', default=123, type=int,
+                    help='random seed (default: 123)')
 
 def main():
     global args, best_prec1
     best_prec1 = 0
     args = parser.parse_args()
+    torch.manual_seed(args.seed)
     time_stamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     if args.evaluate:
         args.results_dir = '/tmp'
@@ -90,6 +92,7 @@ def main():
     logging.debug("run arguments: %s", args)
 
     if 'cuda' in args.type:
+        torch.cuda.manual_seed_all(args.seed)
         args.gpus = [int(i) for i in args.gpus.split(',')]
         torch.cuda.set_device(args.gpus[0])
         cudnn.benchmark = True
