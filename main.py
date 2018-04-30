@@ -9,12 +9,12 @@ import torch.backends.cudnn as cudnn
 import torch.optim
 import torch.utils.data
 import models
-from torch.autograd import Variable
 from data import get_dataset
 from preprocess import get_transform
 from utils.log import setup_logging, ResultsLog, save_checkpoint
 from utils.meters import AverageMeter, accuracy
 from utils.optim import OptimRegime
+from utils.misc import torch_dtypes
 from datetime import datetime
 from ast import literal_eval
 
@@ -39,10 +39,14 @@ parser.add_argument('--input_size', type=int, default=None,
                     help='image input size')
 parser.add_argument('--model_config', default='',
                     help='additional architecture configuration')
-parser.add_argument('--type', default='torch.cuda.FloatTensor',
-                    help='type of tensor - e.g torch.cuda.HalfTensor')
-parser.add_argument('--gpus', default='0',
-                    help='gpus used for training - e.g 0,1,3')
+parser.add_argument('--dtype', default='float',
+                    help='type of tensor: ' +
+                    ' | '.join(torch_dtypes.keys()) +
+                    ' (default: half)')
+parser.add_argument('--device', default='cuda',
+                    help='device assignment ("cpu" or "cuda")')
+parser.add_argument('--device_ids', default=[0], type=int, nargs='+',
+                    help='device ids assignment (e.g 0 1 2 3')
 parser.add_argument('-j', '--workers', default=8, type=int, metavar='N',
                     help='number of data loading workers (default: 8)')
 parser.add_argument('--epochs', default=90, type=int, metavar='N',
@@ -68,10 +72,12 @@ parser.add_argument('-e', '--evaluate', type=str, metavar='FILE',
 parser.add_argument('--seed', default=123, type=int,
                     help='random seed (default: 123)')
 
+
 def main():
-    global args, best_prec1
+    global args, best_prec1, dtype
     best_prec1 = 0
     args = parser.parse_args()
+    dtype = torch_dtypes.get(args.dtype)
     torch.manual_seed(args.seed)
     time_stamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     if args.evaluate:
@@ -91,13 +97,12 @@ def main():
     logging.info("saving to %s", save_path)
     logging.debug("run arguments: %s", args)
 
-    if 'cuda' in args.type:
+    if 'cuda' in args.device and torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
-        args.gpus = [int(i) for i in args.gpus.split(',')]
-        torch.cuda.set_device(args.gpus[0])
+        torch.cuda.set_device(args.device_ids[0])
         cudnn.benchmark = True
     else:
-        args.gpus = None
+        args.device_ids = None
 
     # create model
     logging.info("creating model %s", args.model)
@@ -154,8 +159,8 @@ def main():
 
     # define loss function (criterion) and optimizer
     criterion = getattr(model, 'criterion', nn.CrossEntropyLoss)()
-    criterion.type(args.type)
-    model.type(args.type)
+    criterion.to(args.device, dtype)
+    model.to(args.device, dtype)
 
     val_data = get_dataset(args.dataset, 'val', transform['eval'])
     val_loader = torch.utils.data.DataLoader(
@@ -223,8 +228,9 @@ def main():
 
 
 def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=None):
-    if args.gpus and len(args.gpus) > 1:
-        model = torch.nn.DataParallel(model, args.gpus)
+    if args.device_ids and len(args.device_ids) > 1:
+        model = torch.nn.DataParallel(model, args.device_ids)
+        
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
@@ -235,22 +241,20 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
     for i, (inputs, target) in enumerate(data_loader):
         # measure data loading time
         data_time.update(time.time() - end)
-        if args.gpus is not None:
-            target = target.cuda(async=True)
-        input_var = Variable(inputs.type(args.type), volatile=not training)
-        target_var = Variable(target)
+        target = target.to(args.device)
+        inputs = inputs.to(args.device, dtype=dtype)
 
         # compute output
-        output = model(input_var)
-        loss = criterion(output, target_var)
+        output = model(inputs)
+        loss = criterion(output, target)
         if type(output) is list:
             output = output[0]
 
         # measure accuracy and record loss
-        prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
-        losses.update(loss.data[0], inputs.size(0))
-        top1.update(prec1[0], inputs.size(0))
-        top5.update(prec5[0], inputs.size(0))
+        prec1, prec5 = accuracy(output.detach(), target, topk=(1, 5))
+        losses.update(float(loss), inputs.size(0))
+        top1.update(float(prec1), inputs.size(0))
+        top5.update(float(prec5), inputs.size(0))
 
         if training:
             optimizer.update(epoch, epoch * len(data_loader) + i)
@@ -288,8 +292,9 @@ def train(data_loader, model, criterion, epoch, optimizer):
 def validate(data_loader, model, criterion, epoch):
     # switch to evaluate mode
     model.eval()
-    return forward(data_loader, model, criterion, epoch,
-                   training=False, optimizer=None)
+    with torch.no_grad():
+        return forward(data_loader, model, criterion, epoch,
+                       training=False, optimizer=None)
 
 
 if __name__ == '__main__':
