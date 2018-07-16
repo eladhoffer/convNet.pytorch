@@ -1,7 +1,6 @@
 import torch.nn as nn
 import torchvision.transforms as transforms
 import math
-
 __all__ = ['resnet']
 
 
@@ -19,6 +18,14 @@ def init_model(model):
         elif isinstance(m, nn.BatchNorm2d):
             m.weight.data.fill_(1)
             m.bias.data.zero_()
+    for m in model.modules():
+        if isinstance(m, Bottleneck):
+            nn.init.constant_(m.bn3.weight, 0)
+        elif isinstance(m, BasicBlock):
+            nn.init.constant_(m.bn2.weight, 0)
+
+    model.fc.weight.data.normal_(0, 0.01)
+    model.fc.bias.data.zero_()
 
 
 class BasicBlock(nn.Module):
@@ -131,6 +138,16 @@ class ResNet(nn.Module):
 
         return x
 
+    @staticmethod
+    def regularization(model, weight_decay=1e-4):
+        l2_params = 0
+        for m in model.modules():
+            if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+                l2_params += m.weight.pow(2).sum()
+                if m.bias is not None:
+                    l2_params += m.bias.pow(2).sum()
+        return weight_decay * 0.5 * l2_params
+
 
 class ResNet_imagenet(ResNet):
 
@@ -151,12 +168,20 @@ class ResNet_imagenet(ResNet):
         self.fc = nn.Linear(512 * block.expansion, num_classes)
 
         init_model(self)
+
+        scale = 1.
+
+        def ramp_up_lr(lr0, lrT, T):
+            rate = (lrT - lr0) / T
+            return "lambda t: {'lr': %s + t * %s}" % (lr0, rate)
+
         self.regime = [
-            {'epoch': 0, 'optimizer': 'SGD', 'lr': 1e-1,
-             'weight_decay': 1e-4, 'momentum': 0.9},
-            {'epoch': 30, 'lr': 1e-2},
-            {'epoch': 60, 'lr': 1e-3, 'weight_decay': 0},
-            {'epoch': 90, 'lr': 1e-4}
+            {'epoch': 0, 'optimizer': 'SGD', 'momentum': 0.9,
+                'step_lambda': ramp_up_lr(0, 0.1 * scale, 5004 * 5 / scale)},
+            {'epoch': 5,  'lr': scale * 1e-1},
+            {'epoch': 20, 'lr': scale * 1e-2},
+            {'epoch': 40, 'lr': scale * 1e-3},
+            {'epoch': 50, 'lr': scale * 1e-4}
         ]
 
 
@@ -182,7 +207,7 @@ class ResNet_cifar10(ResNet):
         init_model(self)
         self.regime = [
             {'epoch': 0, 'optimizer': 'SGD', 'lr': 1e-1,
-             'weight_decay': 1e-4, 'momentum': 0.9},
+             'weight_decay': 0, 'momentum': 0.9},
             {'epoch': 81, 'lr': 1e-2},
             {'epoch': 122, 'lr': 1e-3, 'weight_decay': 0},
             {'epoch': 164, 'lr': 1e-4}

@@ -17,6 +17,7 @@ from utils.optim import OptimRegime
 from utils.misc import torch_dtypes
 from datetime import datetime
 from ast import literal_eval
+from multiprocessing import set_start_method
 
 model_names = sorted(name for name in models.__dict__
                      if name.islower() and not name.startswith("__")
@@ -75,6 +76,7 @@ parser.add_argument('--seed', default=123, type=int,
 
 def main():
     global args, best_prec1, dtype
+    set_start_method('spawn')
     best_prec1 = 0
     args = parser.parse_args()
     dtype = torch_dtypes.get(args.dtype)
@@ -228,6 +230,7 @@ def main():
 
 
 def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=None):
+    regularizer = getattr(model, 'regularization', None)
     if args.device_ids and len(args.device_ids) > 1:
         model = torch.nn.DataParallel(model, args.device_ids)
         
@@ -247,6 +250,9 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
         # compute output
         output = model(inputs)
         loss = criterion(output, target)
+        if regularizer is not None:
+            loss += regularizer(model)
+
         if type(output) is list:
             output = output[0]
 
