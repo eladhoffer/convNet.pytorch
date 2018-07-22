@@ -17,7 +17,6 @@ from utils.optim import OptimRegime
 from utils.misc import torch_dtypes
 from datetime import datetime
 from ast import literal_eval
-from multiprocessing import set_start_method
 
 model_names = sorted(name for name in models.__dict__
                      if name.islower() and not name.startswith("__")
@@ -76,7 +75,6 @@ parser.add_argument('--seed', default=123, type=int,
 
 def main():
     global args, best_prec1, dtype
-    set_start_method('spawn')
     best_prec1 = 0
     args = parser.parse_args()
     dtype = torch_dtypes.get(args.dtype)
