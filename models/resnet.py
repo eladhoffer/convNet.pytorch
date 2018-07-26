@@ -179,9 +179,9 @@ class ResNet_imagenet(ResNet):
             {'epoch': 0, 'optimizer': 'SGD', 'momentum': 0.9,
                 'step_lambda': ramp_up_lr(0, 0.1 * scale, 5004 * 5 / scale)},
             {'epoch': 5,  'lr': scale * 1e-1},
-            {'epoch': 20, 'lr': scale * 1e-2},
-            {'epoch': 40, 'lr': scale * 1e-3},
-            {'epoch': 50, 'lr': scale * 1e-4}
+            {'epoch': 30, 'lr': scale * 1e-2},
+            {'epoch': 60, 'lr': scale * 1e-3},
+            {'epoch': 80, 'lr': scale * 1e-4}
         ]
 
 
