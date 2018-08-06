@@ -169,7 +169,8 @@ class ResNet_imagenet(ResNet):
 
         init_model(self)
 
-        scale = 1.
+        batch_size = 256.
+        scale = batch_size / 256.
 
         def ramp_up_lr(lr0, lrT, T):
             rate = (lrT - lr0) / T
@@ -177,7 +178,7 @@ class ResNet_imagenet(ResNet):
 
         self.regime = [
             {'epoch': 0, 'optimizer': 'SGD', 'momentum': 0.9,
-                'step_lambda': ramp_up_lr(0, 0.1 * scale, 5004 * 5 / scale)},
+                'step_lambda': ramp_up_lr(0.1, 0.1 * scale, 5004 * 5 / scale)},
             {'epoch': 5,  'lr': scale * 1e-1},
             {'epoch': 30, 'lr': scale * 1e-2},
             {'epoch': 60, 'lr': scale * 1e-3},

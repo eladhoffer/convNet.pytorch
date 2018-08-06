@@ -9,6 +9,8 @@ import torch.backends.cudnn as cudnn
 import torch.optim
 import torch.utils.data
 import models
+import torch.distributed as dist
+from torch.utils.data.distributed import DistributedSampler
 from data import get_dataset
 from preprocess import get_transform
 from utils.log import setup_logging, ResultsLog, save_checkpoint
@@ -47,6 +49,14 @@ parser.add_argument('--device', default='cuda',
                     help='device assignment ("cpu" or "cuda")')
 parser.add_argument('--device_ids', default=[0], type=int, nargs='+',
                     help='device ids assignment (e.g 0 1 2 3')
+parser.add_argument('--world-size', default=-1, type=int,
+                    help='number of distributed processes')
+parser.add_argument('--local_rank', default=-1, type=int,
+                    help='rank of distributed processes')
+parser.add_argument('--dist-init', default='env://', type=str,
+                    help='init used to set up distributed training')
+parser.add_argument('--dist-backend', default='nccl', type=str,
+                    help='distributed backend')
 parser.add_argument('-j', '--workers', default=8, type=int, metavar='N',
                     help='number of data loading workers (default: 8)')
 parser.add_argument('--epochs', default=90, type=int, metavar='N',
@@ -93,6 +103,12 @@ def main():
     results_path = os.path.join(save_path, 'results')
     results = ResultsLog(
         results_path, title='Training Results - %s' % args.save)
+
+    args.distributed = args.local_rank >= 0 or args.world_size > 1
+    if args.distributed:
+        args.device_ids = [args.local_rank]
+        dist.init_process_group(backend=args.dist_backend, init_method=args.dist_init,
+                                world_size=args.world_size, rank=args.local_rank)
 
     logging.info("saving to %s", save_path)
     logging.debug("run arguments: %s", args)
@@ -173,18 +189,28 @@ def main():
         return
 
     train_data = get_dataset(args.dataset, 'train', transform['train'])
+    if args.distributed:
+        train_sampler = DistributedSampler(train_data)
+    else:
+        train_sampler = None
     train_loader = torch.utils.data.DataLoader(
-        train_data,
-        batch_size=args.batch_size, shuffle=True,
-        num_workers=args.workers, pin_memory=True)
+        train_data, sampler=train_sampler,
+        batch_size=args.batch_size, shuffle=train_sampler is None,
+        num_workers=args.workers, pin_memory=True, drop_last=True)
 
     optimizer = OptimRegime(model.parameters(), regime)
     logging.info('training regime: %s', regime)
 
     for epoch in range(args.start_epoch, args.epochs):
+        if train_sampler is not None:
+            train_sampler.set_epoch(epoch)
+
         # train for one epoch
         train_loss, train_prec1, train_prec5 = train(
             train_loader, model, criterion, epoch, optimizer)
+        
+        if args.local_rank > 0:
+            continue
 
         # evaluate on validation set
         val_loss, val_prec1, val_prec5 = validate(
@@ -229,9 +255,15 @@ def main():
 
 def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=None):
     regularizer = getattr(model, 'regularization', None)
-    if args.device_ids and len(args.device_ids) > 1:
-        model = torch.nn.DataParallel(model, args.device_ids)
-        
+    if args.distributed:
+        model = nn.parallel.DistributedDataParallel(model,
+                                                    device_ids=[
+                                                        args.local_rank],
+                                                    output_device=args.local_rank)
+    else:
+        if args.device_ids and len(args.device_ids) > 1:
+            model = nn.DataParallel(model, args.device_ids)
+
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
@@ -271,7 +303,7 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
         batch_time.update(time.time() - end)
         end = time.time()
 
-        if i % args.print_freq == 0:
+        if args.local_rank < 1 and i % args.print_freq == 0:
             logging.info('{phase} - Epoch: [{0}][{1}/{2}]\t'
                          'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                          'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
