@@ -16,6 +16,7 @@ from preprocess import get_transform
 from utils.log import setup_logging, ResultsLog, save_checkpoint
 from utils.meters import AverageMeter, accuracy
 from utils.optim import OptimRegime
+from utils.cross_entropy import CrossEntropyLoss
 from utils.misc import torch_dtypes
 from datetime import datetime
 from ast import literal_eval
@@ -44,7 +45,7 @@ parser.add_argument('--model_config', default='',
 parser.add_argument('--dtype', default='float',
                     help='type of tensor: ' +
                     ' | '.join(torch_dtypes.keys()) +
-                    ' (default: half)')
+                    ' (default: float)')
 parser.add_argument('--device', default='cuda',
                     help='device assignment ("cpu" or "cuda")')
 parser.add_argument('--device_ids', default=[0], type=int, nargs='+',
@@ -67,6 +68,8 @@ parser.add_argument('-b', '--batch-size', default=256, type=int,
                     metavar='N', help='mini-batch size (default: 256)')
 parser.add_argument('--optimizer', default='SGD', type=str, metavar='OPT',
                     help='optimizer function used')
+parser.add_argument('--label_smoothing', default=0, type=float,
+                    help='label smoothing coefficient - default 0')
 parser.add_argument('--lr', '--learning_rate', default=0.1, type=float,
                     metavar='LR', help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
@@ -174,7 +177,10 @@ def main():
                                         'weight_decay': args.weight_decay}])
 
     # define loss function (criterion) and optimizer
-    criterion = getattr(model, 'criterion', nn.CrossEntropyLoss)()
+    loss_params = {}
+    if args.label_smoothing > 0:
+        loss_params['smooth_eps'] = args.label_smoothing
+    criterion = getattr(model, 'criterion', CrossEntropyLoss)(**loss_params)
     criterion.to(args.device, dtype)
     model.to(args.device, dtype)
 
@@ -208,9 +214,6 @@ def main():
         # train for one epoch
         train_loss, train_prec1, train_prec5 = train(
             train_loader, model, criterion, epoch, optimizer)
-        
-        if args.local_rank > 0:
-            continue
 
         # evaluate on validation set
         val_loss, val_prec1, val_prec5 = validate(
