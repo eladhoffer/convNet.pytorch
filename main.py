@@ -27,7 +27,7 @@ model_names = sorted(name for name in models.__dict__
 
 parser = argparse.ArgumentParser(description='PyTorch ConvNet Training')
 
-parser.add_argument('--results_dir', metavar='RESULTS_DIR', default='./results',
+parser.add_argument('--results-dir', metavar='RESULTS_DIR', default='./results',
                     help='results dir')
 parser.add_argument('--save', metavar='SAVE', default='',
                     help='saved folder')
@@ -38,7 +38,7 @@ parser.add_argument('--model', '-a', metavar='MODEL', default='alexnet',
                     help='model architecture: ' +
                     ' | '.join(model_names) +
                     ' (default: alexnet)')
-parser.add_argument('--input_size', type=int, default=None,
+parser.add_argument('--input-size', type=int, default=None,
                     help='image input size')
 parser.add_argument('--model_config', default='',
                     help='additional architecture configuration')
@@ -48,7 +48,7 @@ parser.add_argument('--dtype', default='float',
                     ' (default: float)')
 parser.add_argument('--device', default='cuda',
                     help='device assignment ("cpu" or "cuda")')
-parser.add_argument('--device_ids', default=[0], type=int, nargs='+',
+parser.add_argument('--device-ids', default=[0], type=int, nargs='+',
                     help='device ids assignment (e.g 0 1 2 3')
 parser.add_argument('--world-size', default=-1, type=int,
                     help='number of distributed processes')
@@ -66,11 +66,13 @@ parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
 parser.add_argument('-b', '--batch-size', default=256, type=int,
                     metavar='N', help='mini-batch size (default: 256)')
+parser.add_argument('--eval-batch-size', default=-1, type=int,
+                    help='mini-batch size (default: same as training)')
 parser.add_argument('--optimizer', default='SGD', type=str, metavar='OPT',
                     help='optimizer function used')
-parser.add_argument('--label_smoothing', default=0, type=float,
+parser.add_argument('--label-smoothing', default=0, type=float,
                     help='label smoothing coefficient - default 0')
-parser.add_argument('--lr', '--learning_rate', default=0.1, type=float,
+parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
                     metavar='LR', help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                     help='momentum')
@@ -101,13 +103,14 @@ def main():
     if not os.path.exists(save_path):
         os.makedirs(save_path)
 
+    args.distributed = args.local_rank >= 0 or args.world_size > 1
     setup_logging(os.path.join(save_path, 'log.txt'),
-                  resume=args.resume is not '')
+                  resume=args.resume is not '',
+                  dummy=args.distributed and args.local_rank > 0)
     results_path = os.path.join(save_path, 'results')
     results = ResultsLog(
         results_path, title='Training Results - %s' % args.save)
 
-    args.distributed = args.local_rank >= 0 or args.world_size > 1
     if args.distributed:
         args.device_ids = [args.local_rank]
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_init,
@@ -115,6 +118,7 @@ def main():
 
     logging.info("saving to %s", save_path)
     logging.debug("run arguments: %s", args)
+    logging.info("creating model %s", args.model)
 
     if 'cuda' in args.device and torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
@@ -124,7 +128,6 @@ def main():
         args.device_ids = None
 
     # create model
-    logging.info("creating model %s", args.model)
     model = models.__dict__[args.model]
     model_config = {'input_size': args.input_size, 'dataset': args.dataset}
 
@@ -133,6 +136,8 @@ def main():
 
     model = model(**model_config)
     logging.info("created model with configuration: %s", model_config)
+    num_parameters = sum([l.nelement() for l in model.parameters()])
+    logging.info("number of parameters: %d", num_parameters)
 
     # optionally resume from a checkpoint
     if args.evaluate:
@@ -159,9 +164,6 @@ def main():
         else:
             logging.error("no checkpoint found at '%s'", args.resume)
 
-    num_parameters = sum([l.nelement() for l in model.parameters()])
-    logging.info("number of parameters: %d", num_parameters)
-
     # Data loading code
     default_transform = {
         'train': get_transform(args.dataset,
@@ -185,13 +187,19 @@ def main():
     model.to(args.device, dtype)
 
     val_data = get_dataset(args.dataset, 'val', transform['eval'])
+    args.eval_batch_size = args.eval_batch_size if args.eval_batch_size else args.batch_size
+
     val_loader = torch.utils.data.DataLoader(
         val_data,
-        batch_size=args.batch_size, shuffle=False,
-        num_workers=args.workers, pin_memory=True)
+        batch_size=args.eval_batch_size, shuffle=False,
+        num_workers=args.workers, pin_memory=False)
+
+    optimizer = OptimRegime(model.parameters(), regime)
+    trainer = Trainer(model, criterion, optimizer)
 
     if args.evaluate:
-        validate(val_loader, model, criterion, 0)
+        results = trainer.validate(val_loader)
+        logging.info(results)
         return
 
     train_data = get_dataset(args.dataset, 'train', transform['train'])
@@ -202,26 +210,27 @@ def main():
     train_loader = torch.utils.data.DataLoader(
         train_data, sampler=train_sampler,
         batch_size=args.batch_size, shuffle=train_sampler is None,
-        num_workers=args.workers, pin_memory=True, drop_last=True)
+        num_workers=args.workers, pin_memory=False, drop_last=True)
 
-    optimizer = OptimRegime(model.parameters(), regime)
     logging.info('training regime: %s', regime)
-
+    trainer.training_steps = args.start_epoch * len(train_loader)
     for epoch in range(args.start_epoch, args.epochs):
+        trainer.epoch = epoch
         if train_sampler is not None:
             train_sampler.set_epoch(epoch)
 
         # train for one epoch
-        train_loss, train_prec1, train_prec5 = train(
-            train_loader, model, criterion, epoch, optimizer)
+        train_results = trainer.train(train_loader)
 
         # evaluate on validation set
-        val_loss, val_prec1, val_prec5 = validate(
-            val_loader, model, criterion, epoch)
+        val_results = trainer.validate(val_loader)
+
+        if args.distributed and args.local_rank > 0:
+            continue
 
         # remember best prec@1 and save checkpoint
-        is_best = val_prec1 > best_prec1
-        best_prec1 = max(val_prec1, best_prec1)
+        is_best = val_results['prec1'] > best_prec1
+        best_prec1 = max(val_results['prec1'], best_prec1)
         save_checkpoint({
             'epoch': epoch + 1,
             'model': args.model,
@@ -230,110 +239,120 @@ def main():
             'best_prec1': best_prec1,
             'regime': regime
         }, is_best, path=save_path)
-        logging.info('\n Epoch: {0}\t'
-                     'Training Loss {train_loss:.4f} \t'
-                     'Training Prec@1 {train_prec1:.3f} \t'
-                     'Training Prec@5 {train_prec5:.3f} \t'
-                     'Validation Loss {val_loss:.4f} \t'
-                     'Validation Prec@1 {val_prec1:.3f} \t'
-                     'Validation Prec@5 {val_prec5:.3f} \n'
-                     .format(epoch + 1, train_loss=train_loss, val_loss=val_loss,
-                             train_prec1=train_prec1, val_prec1=val_prec1,
-                             train_prec5=train_prec5, val_prec5=val_prec5))
 
-        results.add(epoch=epoch + 1, train_loss=train_loss, val_loss=val_loss,
-                    train_error1=100 - train_prec1, val_error1=100 - val_prec1,
-                    train_error5=100 - train_prec5, val_error5=100 - val_prec5)
-        results.plot(x='epoch', y=['train_loss', 'val_loss'],
+        logging.info('\nEpoch: {0}\n'
+                     'Training Loss {train[loss]:.4f} \t'
+                     'Training Prec@1 {train[prec1]:.3f} \t'
+                     'Validation Loss {val[loss]:.4f} \t'
+                     'Validation Prec@1 {val[prec1]:.3f} \t'
+                     .format(epoch + 1, train=train_results, val=val_results))
+
+        results.add(epoch=epoch + 1)
+        results.add(**{'training ' + k: v for k, v in train_results.items()})
+        results.add(**{'validation ' + k: v for k, v in val_results.items()})
+
+        results.plot(x='epoch', y=['training loss', 'validation loss'],
                      legend=['training', 'validation'],
                      title='Loss', ylabel='loss')
-        results.plot(x='epoch', y=['train_error1', 'val_error1'],
+        results.plot(x='epoch', y=['training error1', 'validation error1'],
                      legend=['training', 'validation'],
                      title='Error@1', ylabel='error %')
-        results.plot(x='epoch', y=['train_error5', 'val_error5'],
+        results.plot(x='epoch', y=['training error5', 'validation error5'],
                      legend=['training', 'validation'],
                      title='Error@5', ylabel='error %')
         results.save()
 
 
-def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=None):
-    regularizer = getattr(model, 'regularization', None)
-    if args.distributed:
-        model = nn.parallel.DistributedDataParallel(model,
-                                                    device_ids=[
-                                                        args.local_rank],
-                                                    output_device=args.local_rank)
-    else:
-        if args.device_ids and len(args.device_ids) > 1:
-            model = nn.DataParallel(model, args.device_ids)
+class Trainer(object):
+    def __init__(self, model, criterion, optimizer=None):
+        self._model = model
+        self.criterion = criterion
+        self.epoch = 0
+        self.training_steps = 0
+        self.optimizer = optimizer
 
-    batch_time = AverageMeter()
-    data_time = AverageMeter()
-    losses = AverageMeter()
-    top1 = AverageMeter()
-    top5 = AverageMeter()
+        def empty_reg(m): return 0
+        self.regularizer = getattr(model, 'regularization', empty_reg)
+        self.regularizer_pre_step = getattr(
+            model, 'regularization_pre_step', empty_reg)
+        self.regularizer_post_step = getattr(
+            model, 'regularization_post_step', empty_reg)
+        if args.distributed:
+            self.model = nn.parallel.DistributedDataParallel(model,
+                                                             device_ids=[
+                                                                 args.local_rank],
+                                                             output_device=args.local_rank)
+        else:
+            if args.device_ids and len(args.device_ids) > 1:
+                self.model = nn.DataParallel(model, args.device_ids)
 
-    end = time.time()
-    for i, (inputs, target) in enumerate(data_loader):
-        # measure data loading time
-        data_time.update(time.time() - end)
-        target = target.to(args.device)
-        inputs = inputs.to(args.device, dtype=dtype)
-
-        # compute output
-        output = model(inputs)
-        loss = criterion(output, target)
-        if regularizer is not None:
-            loss += regularizer(model)
-
-        if type(output) is list:
-            output = output[0]
-
-        # measure accuracy and record loss
-        prec1, prec5 = accuracy(output.detach(), target, topk=(1, 5))
-        losses.update(float(loss), inputs.size(0))
-        top1.update(float(prec1), inputs.size(0))
-        top5.update(float(prec5), inputs.size(0))
-
-        if training:
-            optimizer.update(epoch, epoch * len(data_loader) + i)
-            # compute gradient and do SGD step
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-        # measure elapsed time
-        batch_time.update(time.time() - end)
+    def forward(self, data_loader, training=False):
+        meters = {name: AverageMeter()
+                  for name in ['step', 'data', 'loss', 'prec1', 'prec5']}
         end = time.time()
 
-        if args.local_rank < 1 and i % args.print_freq == 0:
-            logging.info('{phase} - Epoch: [{0}][{1}/{2}]\t'
-                         'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                         'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
-                         'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                         'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
-                         'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
-                             epoch, i, len(data_loader),
-                             phase='TRAINING' if training else 'EVALUATING',
-                             batch_time=batch_time,
-                             data_time=data_time, loss=losses, top1=top1, top5=top5))
+        for i, (inputs, target) in enumerate(data_loader):
+            # measure data loading time
+            meters['data'].update(time.time() - end)
+            target = target.to(args.device)
+            inputs = inputs.to(args.device, dtype=dtype)
 
-    return losses.avg, top1.avg, top5.avg
+            # compute output
+            output = self.model(inputs)
+            loss = self.criterion(output, target)
+            loss += self.regularizer(self.model)
 
+            if type(output) is list:
+                output = output[0]
 
-def train(data_loader, model, criterion, epoch, optimizer):
-    # switch to train mode
-    model.train()
-    return forward(data_loader, model, criterion, epoch,
-                   training=True, optimizer=optimizer)
+            # measure accuracy and record loss
+            prec1, prec5 = accuracy(output.detach(), target, topk=(1, 5))
+            meters['loss'].update(float(loss), inputs.size(0))
+            meters['prec1'].update(float(prec1), inputs.size(0))
+            meters['prec5'].update(float(prec5), inputs.size(0))
 
+            if training:
+                self.optimizer.update(self.epoch, self.training_steps)
+                # compute gradient and do SGD step
+                self.optimizer.zero_grad()
+                self.regularizer_pre_step(self.model)
+                loss.backward()
+                self.optimizer.step()
+                self.regularizer_post_step(self.model)
+                self.training_steps += 1
 
-def validate(data_loader, model, criterion, epoch):
-    # switch to evaluate mode
-    model.eval()
-    with torch.no_grad():
-        return forward(data_loader, model, criterion, epoch,
-                       training=False, optimizer=None)
+            # measure elapsed time
+            meters['step'].update(time.time() - end)
+            end = time.time()
+
+            if args.local_rank < 1 and i % args.print_freq == 0:
+                logging.info('{phase} - Epoch: [{0}][{1}/{2}]\t'
+                             'Time {meters[step].val:.3f} ({meters[step].avg:.3f})\t'
+                             'Data {meters[data].val:.3f} ({meters[data].avg:.3f})\t'
+                             'Loss {meters[loss].val:.4f} ({meters[loss].avg:.4f})\t'
+                             'Prec@1 {meters[prec1].val:.3f} ({meters[prec1].avg:.3f})\t'
+                             'Prec@5 {meters[prec5].val:.3f} ({meters[prec5].avg:.3f})'
+                             .format(
+                                 self.epoch, i, len(data_loader),
+                                 phase='TRAINING' if training else 'EVALUATING',
+                                 meters=meters))
+
+        results = {name: meter.avg for name, meter in meters.items()}
+        results['error1'] = 100. - results['prec1']
+        results['error5'] = 100. - results['prec5']
+
+        return results
+
+    def train(self, data_loader):
+        # switch to train mode
+        self.model.train()
+        return self.forward(data_loader, training=True)
+
+    def validate(self, data_loader):
+        # switch to evaluate mode
+        self.model.eval()
+        with torch.no_grad():
+            return self.forward(data_loader, training=False)
 
 
 if __name__ == '__main__':
