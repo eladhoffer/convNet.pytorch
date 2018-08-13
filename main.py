@@ -187,7 +187,7 @@ def main():
     model.to(args.device, dtype)
 
     val_data = get_dataset(args.dataset, 'val', transform['eval'])
-    args.eval_batch_size = args.eval_batch_size if args.eval_batch_size else args.batch_size
+    args.eval_batch_size = args.eval_batch_size if args.eval_batch_size > 0 else args.batch_size
 
     val_loader = torch.utils.data.DataLoader(
         val_data,
@@ -247,9 +247,10 @@ def main():
                      'Validation Prec@1 {val[prec1]:.3f} \t'
                      .format(epoch + 1, train=train_results, val=val_results))
 
-        results.add(epoch=epoch + 1)
-        results.add(**{'training ' + k: v for k, v in train_results.items()})
-        results.add(**{'validation ' + k: v for k, v in val_results.items()})
+        values = dict(epoch = epoch + 1)
+        values.update({'training ' + k: v for k, v in train_results.items()})
+        values.update({'validation ' + k: v for k, v in val_results.items()})
+        results.add(**values)
 
         results.plot(x='epoch', y=['training loss', 'validation loss'],
                      legend=['training', 'validation'],
