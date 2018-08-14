@@ -283,9 +283,10 @@ class Trainer(object):
                                                              device_ids=[
                                                                  args.local_rank],
                                                              output_device=args.local_rank)
-        else:
-            if args.device_ids and len(args.device_ids) > 1:
+        elif args.device_ids and len(args.device_ids) > 1:
                 self.model = nn.DataParallel(model, args.device_ids)
+        else:
+            self.model = model
 
     def forward(self, data_loader, training=False):
         meters = {name: AverageMeter()
