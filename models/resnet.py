@@ -152,7 +152,7 @@ class ResNet(nn.Module):
 class ResNet_imagenet(ResNet):
 
     def __init__(self, num_classes=1000,
-                 block=Bottleneck, layers=[3, 4, 23, 3]):
+                 block=Bottleneck, layers=[3, 4, 23, 3], regime='normal', scale_lr=1):
         super(ResNet_imagenet, self).__init__()
         self.inplanes = 64
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3,
@@ -164,33 +164,45 @@ class ResNet_imagenet(ResNet):
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
-        self.avgpool = nn.AvgPool2d(7)
+        self.avgpool = nn.AdaptiveAvgPool2d(1)
         self.fc = nn.Linear(512 * block.expansion, num_classes)
 
         init_model(self)
 
-        batch_size = 256.
-        scale = batch_size / 256.
-
         def ramp_up_lr(lr0, lrT, T):
             rate = (lrT - lr0) / T
             return "lambda t: {'lr': %s + t * %s}" % (lr0, rate)
+        if regime == 'normal':
+            self.regime = [
+                {'epoch': 0, 'optimizer': 'SGD', 'momentum': 0.9,
+                    'step_lambda': ramp_up_lr(0.1, 0.1 * scale_lr, 5004 * 5 / scale_lr)},
+                {'epoch': 5,  'lr': scale_lr * 1e-1},
+                {'epoch': 30, 'lr': scale_lr * 1e-2},
+                {'epoch': 60, 'lr': scale_lr * 1e-3},
+                {'epoch': 80, 'lr': scale_lr * 1e-4}
+            ]
+        elif regime == 'fast':
+            self.regime = [
+                {'epoch': 0, 'optimizer': 'SGD', 'momentum': 0.9,
+                    'step_lambda': ramp_up_lr(0.1, 0.1 * 4 * scale_lr, 5004 * 4 / (4*scale_lr))},
+                {'epoch': 4,  'lr': 4 * scale_lr * 1e-1},
+                {'epoch': 18, 'lr': scale_lr * 1e-1},
+                {'epoch': 21, 'lr': scale_lr * 1e-2},
+                {'epoch': 35, 'lr': scale_lr * 1e-3},
+                {'epoch': 43, 'lr': scale_lr * 1e-4},
+            ]
+            self.data_regime = [
+                {'epoch': 0, 'input_size': 128, 'batch_size': 256},
+                {'epoch': 18, 'input_size': 224, 'batch_size': 64},
+                {'epoch': 41, 'input_size': 288, 'batch_size': 32},
+            ]
 
-        self.regime = [
-            {'epoch': 0, 'optimizer': 'SGD', 'momentum': 0.9,
-                'step_lambda': ramp_up_lr(0.1, 0.1 * scale, 5004 * 5 / scale)},
-            {'epoch': 5,  'lr': scale * 1e-1},
-            {'epoch': 30, 'lr': scale * 1e-2},
-            {'epoch': 60, 'lr': scale * 1e-3},
-            {'epoch': 80, 'lr': scale * 1e-4}
-        ]
 
-
-class ResNet_cifar10(ResNet):
+class ResNet_cifar(ResNet):
 
     def __init__(self, num_classes=10,
                  block=BasicBlock, depth=18):
-        super(ResNet_cifar10, self).__init__()
+        super(ResNet_cifar, self).__init__()
         self.inplanes = 16
         n = int((depth - 2) / 6)
         self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1,
@@ -215,30 +227,30 @@ class ResNet_cifar10(ResNet):
         ]
 
 
-def resnet(**kwargs):
-    num_classes, depth, dataset = map(
-        kwargs.get, ['num_classes', 'depth', 'dataset'])
+def resnet(**config):
+    dataset = config.pop('dataset', 'imagenet')
     if dataset == 'imagenet':
-        num_classes = num_classes or 1000
-        depth = depth or 50
+        config.setdefault('num_classes', 1000)
+        depth = config.pop('depth', 50)
         if depth == 18:
-            return ResNet_imagenet(num_classes=num_classes,
-                                   block=BasicBlock, layers=[2, 2, 2, 2])
+            config.update(dict(block=BasicBlock, layers=[2, 2, 2, 2]))
         if depth == 34:
-            return ResNet_imagenet(num_classes=num_classes,
-                                   block=BasicBlock, layers=[3, 4, 6, 3])
+            config.update(dict(block=BasicBlock, layers=[3, 4, 6, 3]))
         if depth == 50:
-            return ResNet_imagenet(num_classes=num_classes,
-                                   block=Bottleneck, layers=[3, 4, 6, 3])
+            config.update(dict(block=Bottleneck, layers=[3, 4, 6, 3]))
         if depth == 101:
-            return ResNet_imagenet(num_classes=num_classes,
-                                   block=Bottleneck, layers=[3, 4, 23, 3])
+            config.update(dict(block=Bottleneck, layers=[3, 4, 23, 3]))
         if depth == 152:
-            return ResNet_imagenet(num_classes=num_classes,
-                                   block=Bottleneck, layers=[3, 8, 36, 3])
+            config.update(dict(block=Bottleneck, layers=[3, 8, 36, 3]))
+
+        return ResNet_imagenet(**config)
 
     elif dataset == 'cifar10':
-        num_classes = num_classes or 10
-        depth = depth or 56
-        return ResNet_cifar10(num_classes=num_classes,
-                              block=BasicBlock, depth=depth)
+        config.setdefault('num_classes', 10)
+        config.setdefault('depth', 44)
+        return ResNet_cifar(block=BasicBlock, **config)
+
+    elif dataset == 'cifar100':
+        config.setdefault('num_classes', 100)
+        config.setdefault('depth', 44)
+        return ResNet_cifar(block=BasicBlock, **config)

@@ -10,8 +10,7 @@ import torch.optim
 import torch.utils.data
 import models
 import torch.distributed as dist
-from torch.utils.data.distributed import DistributedSampler
-from data import get_dataset
+from data import DataRegime
 from preprocess import get_transform
 from utils.log import setup_logging, ResultsLog, save_checkpoint
 from utils.meters import AverageMeter, accuracy
@@ -129,7 +128,7 @@ def main():
 
     # create model
     model = models.__dict__[args.model]
-    model_config = {'input_size': args.input_size, 'dataset': args.dataset}
+    model_config = {'dataset': args.dataset}
 
     if args.model_config is not '':
         model_config = dict(model_config, **literal_eval(args.model_config))
@@ -164,20 +163,6 @@ def main():
         else:
             logging.error("no checkpoint found at '%s'", args.resume)
 
-    # Data loading code
-    default_transform = {
-        'train': get_transform(args.dataset,
-                               input_size=args.input_size, augment=True),
-        'eval': get_transform(args.dataset,
-                              input_size=args.input_size, augment=False)
-    }
-    transform = getattr(model, 'input_transform', default_transform)
-    regime = getattr(model, 'regime', [{'epoch': 0,
-                                        'optimizer': args.optimizer,
-                                        'lr': args.lr,
-                                        'momentum': args.momentum,
-                                        'weight_decay': args.weight_decay}])
-
     # define loss function (criterion) and optimizer
     loss_params = {}
     if args.label_smoothing > 0:
@@ -186,44 +171,51 @@ def main():
     criterion.to(args.device, dtype)
     model.to(args.device, dtype)
 
-    val_data = get_dataset(args.dataset, 'val', transform['eval'])
+    # optimizer configuration
+    optim_regime = getattr(model, 'regime', [{'epoch': 0,
+                                              'optimizer': args.optimizer,
+                                              'lr': args.lr,
+                                              'momentum': args.momentum,
+                                              'weight_decay': args.weight_decay}])
+
+    optimizer = OptimRegime(model.parameters(), optim_regime)
+
+    trainer = Trainer(model, criterion, optimizer,
+                      device_ids=args.device_ids, device=args.device, dtype=dtype,
+                      distributed=args.distributed, local_rank=args.local_rank,
+                      print_freq=args.print_freq)
+
+    # Evaluation Data loading code
     args.eval_batch_size = args.eval_batch_size if args.eval_batch_size > 0 else args.batch_size
-
-    val_loader = torch.utils.data.DataLoader(
-        val_data,
-        batch_size=args.eval_batch_size, shuffle=False,
-        num_workers=args.workers, pin_memory=False)
-
-    optimizer = OptimRegime(model.parameters(), regime)
-    trainer = Trainer(model, criterion, optimizer)
+    val_data = DataRegime(getattr(model, 'data_eval_regime', None),
+                          defaults={'name': args.dataset, 'split': 'val', 'augment': False,
+                                    'input_size': args.input_size, 'batch_size': args.eval_batch_size, 'shuffle': False,
+                                    'num_workers': args.workers, 'pin_memory': True, 'drop_last': True})
 
     if args.evaluate:
-        results = trainer.validate(val_loader)
+        results = trainer.validate(val_data.get_loader())
         logging.info(results)
         return
 
-    train_data = get_dataset(args.dataset, 'train', transform['train'])
-    if args.distributed:
-        train_sampler = DistributedSampler(train_data)
-    else:
-        train_sampler = None
-    train_loader = torch.utils.data.DataLoader(
-        train_data, sampler=train_sampler,
-        batch_size=args.batch_size, shuffle=train_sampler is None,
-        num_workers=args.workers, pin_memory=False, drop_last=True)
+    # Training Data loading code
+    train_data = DataRegime(getattr(model, 'data_regime', None),
+                            defaults={'name': args.dataset, 'split': 'train', 'augment': True,
+                                      'input_size': args.input_size,  'batch_size': args.batch_size, 'shuffle': True,
+                                      'num_workers': args.workers, 'pin_memory': True, 'drop_last': True,
+                                      'distributed': args.distributed, })
 
-    logging.info('training regime: %s', regime)
-    trainer.training_steps = args.start_epoch * len(train_loader)
+    logging.info('optimization regime: %s', optim_regime)
+    trainer.training_steps = args.start_epoch * len(train_data)
     for epoch in range(args.start_epoch, args.epochs):
         trainer.epoch = epoch
-        if train_sampler is not None:
-            train_sampler.set_epoch(epoch)
+        train_data.set_epoch(epoch)
+        val_data.set_epoch(epoch)
 
         # train for one epoch
-        train_results = trainer.train(train_loader)
+        train_results = trainer.train(train_data.get_loader())
 
         # evaluate on validation set
-        val_results = trainer.validate(val_loader)
+        val_results = trainer.validate(val_data.get_loader())
 
         if args.distributed and args.local_rank > 0:
             continue
@@ -236,8 +228,7 @@ def main():
             'model': args.model,
             'config': args.model_config,
             'state_dict': model.state_dict(),
-            'best_prec1': best_prec1,
-            'regime': regime
+            'best_prec1': best_prec1
         }, is_best, path=save_path)
 
         logging.info('\nEpoch: {0}\n'
@@ -247,7 +238,7 @@ def main():
                      'Validation Prec@1 {val[prec1]:.3f} \t'
                      .format(epoch + 1, train=train_results, val=val_results))
 
-        values = dict(epoch = epoch + 1)
+        values = dict(epoch=epoch + 1)
         values.update({'training ' + k: v for k, v in train_results.items()})
         values.update({'validation ' + k: v for k, v in val_results.items()})
         results.add(**values)
@@ -265,12 +256,19 @@ def main():
 
 
 class Trainer(object):
-    def __init__(self, model, criterion, optimizer=None):
+    def __init__(self, model, criterion, optimizer=None,
+                 device_ids=0, device=torch.cuda, dtype=torch.float,
+                 distributed=False, local_rank=-1,
+                 print_freq=100):
         self._model = model
         self.criterion = criterion
         self.epoch = 0
         self.training_steps = 0
         self.optimizer = optimizer
+        self.device = device
+        self.dtype = dtype
+        self.local_rank = local_rank
+        self.print_freq = print_freq
 
         def empty_reg(m): return 0
         self.regularizer = getattr(model, 'regularization', empty_reg)
@@ -278,13 +276,13 @@ class Trainer(object):
             model, 'regularization_pre_step', empty_reg)
         self.regularizer_post_step = getattr(
             model, 'regularization_post_step', empty_reg)
-        if args.distributed:
+        if distributed:
             self.model = nn.parallel.DistributedDataParallel(model,
                                                              device_ids=[
-                                                                 args.local_rank],
-                                                             output_device=args.local_rank)
-        elif args.device_ids and len(args.device_ids) > 1:
-                self.model = nn.DataParallel(model, args.device_ids)
+                                                                 local_rank],
+                                                             output_device=local_rank)
+        elif device_ids and len(device_ids) > 1:
+            self.model = nn.DataParallel(model, device_ids)
         else:
             self.model = model
 
@@ -296,8 +294,8 @@ class Trainer(object):
         for i, (inputs, target) in enumerate(data_loader):
             # measure data loading time
             meters['data'].update(time.time() - end)
-            target = target.to(args.device)
-            inputs = inputs.to(args.device, dtype=dtype)
+            target = target.to(self.device)
+            inputs = inputs.to(self.device, dtype=self.dtype)
 
             # compute output
             output = self.model(inputs)
@@ -327,7 +325,7 @@ class Trainer(object):
             meters['step'].update(time.time() - end)
             end = time.time()
 
-            if args.local_rank < 1 and i % args.print_freq == 0:
+            if self.local_rank < 1 and i % self.print_freq == 0:
                 logging.info('{phase} - Epoch: [{0}][{1}/{2}]\t'
                              'Time {meters[step].val:.3f} ({meters[step].avg:.3f})\t'
                              'Data {meters[data].val:.3f} ({meters[data].avg:.3f})\t'
