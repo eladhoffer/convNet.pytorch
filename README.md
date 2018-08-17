@@ -2,11 +2,17 @@
 
 This is a complete training example for Deep Convolutional Networks on various datasets (ImageNet, Cifar10, Cifar100, MNIST).
 
-It is based off [imagenet example in pytorch](https://github.com/pytorch/examples/tree/master/imagenet) with some helpful additions such as:
+It is based off [imagenet example in pytorch](https://github.com/pytorch/examples/tree/master/imagenet) with helpful additions such as:
   - Training on several datasets other than imagenet
   - Complete logging of trained experiment
   - Graph visualization of the training/validation loss and accuracy
   - Definition of preprocessing and optimization regime for each model
+  - Distributed training
+ 
+ example for efficient multi-gpu training of resnet50 (4 gpus, label-smoothing, fast regime by fast-ai):
+ ```
+ python -m torch.distributed.launch --nproc_per_node=4  main.py --model resnet --model_config "{'depth': 50, 'regime': 'fast'}" --eval-batch-size 512 --save resnet50_fast --label-smoothing 0.1
+```
 
 ## Dependencies
 
@@ -41,10 +47,10 @@ class Model(nn.Module):
             {'epoch': 15, 'lr': 1e-3, 'weight_decay': 0}
         ]
 
-        self.input_transform = {
-            'train': transforms.Compose([...]),
-            'eval': transforms.Compose([...])
-        }
+        self.data_regime = [
+            {'epoch': 0, 'input_size': 128, 'batch_size': 256},
+            {'epoch': 15, 'input_size': 224, 'batch_size': 64}
+        ]
     def forward(self, inputs):
         return self.model(inputs)
         
