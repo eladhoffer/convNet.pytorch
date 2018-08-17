@@ -190,7 +190,7 @@ def main():
     val_data = DataRegime(getattr(model, 'data_eval_regime', None),
                           defaults={'name': args.dataset, 'split': 'val', 'augment': False,
                                     'input_size': args.input_size, 'batch_size': args.eval_batch_size, 'shuffle': False,
-                                    'num_workers': args.workers, 'pin_memory': True, 'drop_last': True})
+                                    'num_workers': args.workers, 'pin_memory': True, 'drop_last': False})
 
     if args.evaluate:
         results = trainer.validate(val_data.get_loader())
@@ -315,8 +315,8 @@ class Trainer(object):
                 self.optimizer.update(self.epoch, self.training_steps)
                 # compute gradient and do SGD step
                 self.optimizer.zero_grad()
-                self.regularizer_pre_step(self.model)
                 loss.backward()
+                self.regularizer_pre_step(self.model)
                 self.optimizer.step()
                 self.regularizer_post_step(self.model)
                 self.training_steps += 1
