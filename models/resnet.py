@@ -42,7 +42,7 @@ def init_model(model):
 
 class BasicBlock(nn.Module):
 
-    def __init__(self, inplanes, planes, expansion=1, stride=1, downsample=None, groups=1, residual_block=None):
+    def __init__(self, inplanes, planes,  stride=1, expansion=1, downsample=None, groups=1, residual_block=None):
         super(BasicBlock, self).__init__()
         self.conv1 = conv3x3(inplanes, planes, stride, groups=groups)
         self.bn1 = nn.BatchNorm2d(planes)
@@ -56,8 +56,7 @@ class BasicBlock(nn.Module):
 
     def forward(self, x):
         residual = x
-        if self.residual_block is not None:
-            residual = self.residual_block(residual)
+
         out = self.conv1(x)
         out = self.bn1(out)
         out = self.relu(out)
@@ -66,7 +65,10 @@ class BasicBlock(nn.Module):
         out = self.bn2(out)
 
         if self.downsample is not None:
-            residual = self.downsample(x)
+            residual = self.downsample(residual)
+
+        if self.residual_block is not None:
+            residual = self.residual_block(residual)
 
         out += residual
         out = self.relu(out)
@@ -106,7 +108,7 @@ class Bottleneck(nn.Module):
 
         if self.downsample is not None:
             residual = self.downsample(residual)
-        
+
         if self.residual_block is not None:
             residual = self.residual_block(residual)
 
@@ -121,7 +123,7 @@ class ResNet(nn.Module):
     def __init__(self):
         super(ResNet, self).__init__()
 
-    def _make_layer(self, block, planes, blocks, expansion=4, stride=1, groups=1, residual_block=None):
+    def _make_layer(self, block, planes, blocks, expansion=1, stride=1, groups=1, residual_block=None):
         downsample = None
         out_planes = planes * expansion
         if stride != 1 or self.inplanes != out_planes:
@@ -223,7 +225,8 @@ class ResNet_imagenet(ResNet):
         elif regime == 'small':
             scale_lr *= 4
             self.regime = [
-                {'epoch': 0, 'optimizer': 'SGD', 'momentum': 0.9, 'lr': scale_lr * 1e-1},
+                {'epoch': 0, 'optimizer': 'SGD',
+                    'momentum': 0.9, 'lr': scale_lr * 1e-1},
                 {'epoch': 30, 'lr': scale_lr * 1e-2},
                 {'epoch': 60, 'lr': scale_lr * 1e-3},
                 {'epoch': 80, 'lr': scale_lr * 1e-4}
@@ -239,7 +242,8 @@ class ResNet_imagenet(ResNet):
 class ResNet_cifar(ResNet):
 
     def __init__(self, num_classes=10, inplanes=16,
-                 block=BasicBlock, depth=18, width=[128, 256, 512], groups=[1, 1, 1]):
+                 block=BasicBlock, depth=18, width=[16, 32, 64],
+                 groups=[1, 1, 1], residual_block=None):
         super(ResNet_cifar, self).__init__()
         self.inplanes = inplanes
         n = int((depth - 2) / 6)
@@ -248,11 +252,12 @@ class ResNet_cifar(ResNet):
         self.bn1 = nn.BatchNorm2d(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = lambda x: x
-        self.layer1 = self._make_layer(block, width[0], n, groups=groups[0])
+        self.layer1 = self._make_layer(block, width[0], n, groups=groups[
+                                       0], residual_block=residual_block)
         self.layer2 = self._make_layer(
-            block, width[1], n, stride=2, groups=groups[1])
+            block, width[1], n, stride=2, groups=groups[1], residual_block=residual_block)
         self.layer3 = self._make_layer(
-            block, width[2], n, stride=2, groups=groups[2])
+            block, width[2], n, stride=2, groups=groups[2], residual_block=residual_block)
         self.layer4 = lambda x: x
         self.avgpool = nn.AvgPool2d(8)
         self.fc = nn.Linear(width[-1], num_classes)
@@ -298,5 +303,4 @@ def resnet(**config):
 
 def resnet_se(**config):
     config['residual_block'] = SEBlock
-    return resnext(**config)
-    
+    return resnet(**config)

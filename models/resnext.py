@@ -15,6 +15,12 @@ class ResNeXt_imagenet(ResNet_imagenet):
         kwargs['expansion'] = expansion
         super(ResNeXt_imagenet, self).__init__(**kwargs)
 
+class ResNeXt_cifar(ResNet_cifar):
+
+    def __init__(self, width=[64, 128, 256], groups=[4, 8, 16], **kwargs):
+        kwargs['width'] = width
+        kwargs['groups'] = groups
+        super(ResNeXt_cifar, self).__init__(**kwargs)
 
 def resnext(**config):
     dataset = config.pop('dataset', 'imagenet')
@@ -37,12 +43,12 @@ def resnext(**config):
     elif dataset == 'cifar10':
         config.setdefault('num_classes', 10)
         config.setdefault('depth', 44)
-        return ResNet_cifar(block=BasicBlock, **config)
+        return ResNeXt_cifar(block=BasicBlock, **config)
 
     elif dataset == 'cifar100':
         config.setdefault('num_classes', 100)
         config.setdefault('depth', 44)
-        return ResNet_cifar(block=BasicBlock, **config)
+        return ResNeXt_cifar(block=BasicBlock, **config)
 
 def resnext_se(**config):
     config['residual_block'] = SEBlock
