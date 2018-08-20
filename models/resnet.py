@@ -229,13 +229,15 @@ class ResNet_imagenet(ResNet):
                     'momentum': 0.9, 'lr': scale_lr * 1e-1},
                 {'epoch': 30, 'lr': scale_lr * 1e-2},
                 {'epoch': 60, 'lr': scale_lr * 1e-3},
-                {'epoch': 80, 'lr': scale_lr * 1e-4}
+                {'epoch': 80, 'lr': 0.25 * scale_lr * 1e-4}
             ]
             self.data_regime = [
                 {'epoch': 0, 'input_size': 128, 'batch_size': 256},
+                {'epoch': 80, 'input_size': 224, 'batch_size': 64},
             ]
             self.data_eval_regime = [
-                {'epoch': 0, 'input_size': 128, 'batch_size': 512},
+                {'epoch': 0, 'input_size': 128, 'batch_size': 1024},
+                {'epoch': 80, 'input_size': 224, 'batch_size': 512},
             ]
 
 
