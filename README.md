@@ -11,7 +11,7 @@ It is based off [imagenet example in pytorch](https://github.com/pytorch/example
  
  example for efficient multi-gpu training of resnet50 (4 gpus, label-smoothing, fast regime by fast-ai):
  ```
- python -m torch.distributed.launch --nproc_per_node=4  main.py --model resnet --model_config "{'depth': 50, 'regime': 'fast'}" --eval-batch-size 512 --save resnet50_fast --label-smoothing 0.1
+ python -m torch.distributed.launch --nproc_per_node=4  main.py --model resnet --model-config "{'depth': 50, 'regime': 'fast'}" --eval-batch-size 512 --save resnet50_fast --label-smoothing 0.1
 ```
 
 ## Dependencies
