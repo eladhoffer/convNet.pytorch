@@ -4,7 +4,6 @@ from bokeh.io import output_file, save, show
 from bokeh.plotting import figure
 from bokeh.layouts import column
 import pandas as pd
-from utils.log import plot_figure
 
 parser = argparse.ArgumentParser(
     description='Compare experiments done with convNet.pytorch')
