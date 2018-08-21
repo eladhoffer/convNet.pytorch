@@ -38,7 +38,7 @@ parser.add_argument('--model', '-a', metavar='MODEL', default='alexnet',
                     ' (default: alexnet)')
 parser.add_argument('--input-size', type=int, default=None,
                     help='image input size')
-parser.add_argument('--model_config', default='',
+parser.add_argument('--model-config', default='',
                     help='additional architecture configuration')
 parser.add_argument('--dtype', default='float',
                     help='type of tensor: ' +
@@ -70,7 +70,7 @@ parser.add_argument('--optimizer', default='SGD', type=str, metavar='OPT',
                     help='optimizer function used')
 parser.add_argument('--label-smoothing', default=0, type=float,
                     help='label smoothing coefficient - default 0')
-parser.add_argument('--grad_clip', default=-1, type=float,
+parser.add_argument('--grad-clip', default=-1, type=float,
                     help='maximum grad norm value, -1 for none')
 parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
                     metavar='LR', help='initial learning rate')
