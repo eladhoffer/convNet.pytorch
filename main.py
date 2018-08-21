@@ -70,6 +70,8 @@ parser.add_argument('--optimizer', default='SGD', type=str, metavar='OPT',
                     help='optimizer function used')
 parser.add_argument('--label-smoothing', default=0, type=float,
                     help='label smoothing coefficient - default 0')
+parser.add_argument('--grad_clip', default=-1, type=float,
+                    help='maximum grad norm value, -1 for none')
 parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
                     metavar='LR', help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
@@ -182,7 +184,7 @@ def main():
     trainer = Trainer(model, criterion, optimizer,
                       device_ids=args.device_ids, device=args.device, dtype=dtype,
                       distributed=args.distributed, local_rank=args.local_rank,
-                      print_freq=args.print_freq)
+                      grad_clip=args.grad_clip, print_freq=args.print_freq)
 
     # Evaluation Data loading code
     args.eval_batch_size = args.eval_batch_size if args.eval_batch_size > 0 else args.batch_size
@@ -209,6 +211,7 @@ def main():
         trainer.epoch = epoch
         train_data.set_epoch(epoch)
         val_data.set_epoch(epoch)
+        logging.info('\nStarting Epoch: {0}\n'.format(epoch + 1))
 
         # train for one epoch
         train_results = trainer.train(train_data.get_loader())
@@ -230,11 +233,13 @@ def main():
             'best_prec1': best_prec1
         }, is_best, path=save_path)
 
-        logging.info('\nEpoch: {0}\n'
+        logging.info('\nResults - Epoch: {0}\n'
                      'Training Loss {train[loss]:.4f} \t'
                      'Training Prec@1 {train[prec1]:.3f} \t'
+                     'Training Prec@5 {train[prec5]:.3f} \t'
                      'Validation Loss {val[loss]:.4f} \t'
                      'Validation Prec@1 {val[prec1]:.3f} \t'
+                     'Validation Prec@5 {val[prec5]:.3f} \t\n'
                      .format(epoch + 1, train=train_results, val=val_results))
 
         values = dict(epoch=epoch + 1)
@@ -251,6 +256,10 @@ def main():
         results.plot(x='epoch', y=['training error5', 'validation error5'],
                      legend=['training', 'validation'],
                      title='Error@5', ylabel='error %')
+        if 'grad' in train_results.keys():
+            results.plot(x='epoch', y=['training grad'],
+                         legend=['gradient L2 norm'],
+                         title='Gradient Norm', ylabel='value')
         results.save()
 
 
