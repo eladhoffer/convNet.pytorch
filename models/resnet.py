@@ -3,7 +3,6 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 import math
 from .modules.se import SEBlock
-
 __all__ = ['resnet', 'resnet_se']
 
 
@@ -223,21 +222,21 @@ class ResNet_imagenet(ResNet):
                 {'epoch': 41, 'input_size': 288, 'batch_size': 32},
             ]
         elif regime == 'small':
-            scale_lr *= 4
+            scale_lr *= 2
             self.regime = [
                 {'epoch': 0, 'optimizer': 'SGD',
                     'momentum': 0.9, 'lr': scale_lr * 1e-1},
                 {'epoch': 30, 'lr': scale_lr * 1e-2},
                 {'epoch': 60, 'lr': scale_lr * 1e-3},
-                {'epoch': 80, 'lr': 0.25 * scale_lr * 1e-4}
+                {'epoch': 80, 'lr': scale_lr * 1e-4}
             ]
             self.data_regime = [
-                {'epoch': 0, 'input_size': 128, 'batch_size': 256},
-                {'epoch': 80, 'input_size': 224, 'batch_size': 64},
+                {'epoch': 0, 'input_size': 128, 'batch_size': 128},
+                {'epoch': 80, 'input_size': 224, 'batch_size': 32},
             ]
             self.data_eval_regime = [
-                {'epoch': 0, 'input_size': 128, 'batch_size': 1024},
-                {'epoch': 80, 'input_size': 224, 'batch_size': 512},
+                {'epoch': 0, 'input_size': 128, 'batch_size': 512},
+                {'epoch': 80, 'input_size': 224, 'batch_size': 256},
             ]
 
 
@@ -276,6 +275,12 @@ class ResNet_cifar(ResNet):
 
 def resnet(**config):
     dataset = config.pop('dataset', 'imagenet')
+    if config.pop('quantize', False):
+        from .modules.quantize import QConv2d, QLinear, RangeBN
+        torch.nn.Linear = QLinear
+        torch.nn.Conv2d = QConv2d
+        torch.nn.BatchNorm2d = RangeBN
+
     if dataset == 'imagenet':
         config.setdefault('num_classes', 1000)
         depth = config.pop('depth', 50)

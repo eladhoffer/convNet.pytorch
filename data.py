@@ -50,7 +50,7 @@ _DATA_ARGS = {'name', 'split', 'transform',
 _DATALOADER_ARGS = {'batch_size', 'shuffle', 'sampler', 'batch_sampler',
                     'num_workers', 'collate_fn', 'pin_memory', 'drop_last',
                     'timeout', 'worker_init_fn'}
-_TRANSFORM_ARGS = {'name', 'input_size', 'scale_size', 'normalize', 'augment'}
+_TRANSFORM_ARGS = {'transform_name', 'input_size', 'scale_size', 'normalize', 'augment'}
 _OTHER_ARGS = {'distributed'}
 
 
@@ -69,6 +69,7 @@ class DataRegime(object):
         transform_setting = {
             k: v for k, v in setting.items() if k in _TRANSFORM_ARGS}
         other_setting = {k: v for k, v in setting.items() if k in _OTHER_ARGS}
+        transform_setting.setdefault('transform_name', data_setting['name'])
         return {'data': data_setting, 'loader': loader_setting,
                 'transform': transform_setting, 'other': other_setting}
 

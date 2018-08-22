@@ -51,21 +51,21 @@ class AlexNetOWT_BN(nn.Module):
         ]
         normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                          std=[0.229, 0.224, 0.225])
-        self.input_transform = {
-            'train': transforms.Compose([
+        self.data_regime = [{
+            'transform': transforms.Compose([
                 transforms.Scale(256),
                 transforms.RandomCrop(224),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
-                normalize
-            ]),
-            'eval': transforms.Compose([
+                normalize])
+        }]
+        self.data_eval_regime = [{
+            'transform': transforms.Compose([
                 transforms.Scale(256),
                 transforms.CenterCrop(224),
                 transforms.ToTensor(),
-                normalize
-            ])
-        }
+                normalize])
+        }]
 
     def forward(self, x):
         x = self.features(x)
