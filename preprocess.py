@@ -71,10 +71,10 @@ def inception_color_preproccess(input_size, normalize=__imagenet_stats):
     ])
 
 
-def get_transform(name='imagenet', input_size=None,
+def get_transform(transform_name='imagenet', input_size=None,
                   scale_size=None, normalize=None, augment=True):
     normalize = normalize or __imagenet_stats
-    if name == 'imagenet':
+    if transform_name == 'imagenet':
         scale_size = scale_size or 256
         input_size = input_size or 224
         if augment:
@@ -82,7 +82,7 @@ def get_transform(name='imagenet', input_size=None,
         else:
             return scale_crop(input_size=input_size,
                               scale_size=scale_size, normalize=normalize)
-    elif 'cifar' in name:
+    elif 'cifar' in transform_name:
         input_size = input_size or 32
         if augment:
             scale_size = scale_size or 40
@@ -92,7 +92,7 @@ def get_transform(name='imagenet', input_size=None,
             scale_size = scale_size or 32
             return scale_crop(input_size=input_size,
                               scale_size=scale_size, normalize=normalize)
-    elif name == 'mnist':
+    elif transform_name == 'mnist':
         normalize = {'mean': [0.5], 'std': [0.5]}
         input_size = input_size or 28
         if augment:
