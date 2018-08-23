@@ -54,7 +54,7 @@ _DATALOADER_ARGS = {'batch_size', 'shuffle', 'sampler', 'batch_sampler',
                     'timeout', 'worker_init_fn'}
 _TRANSFORM_ARGS = {'transform_name', 'input_size',
                    'scale_size', 'normalize', 'augment'}
-_OTHER_ARGS = {'distributed'}
+_OTHER_ARGS = {'distributed', 'duplicates'}
 
 
 class DataRegime(object):
