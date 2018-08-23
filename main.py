@@ -242,7 +242,7 @@ def main():
                      'Validation Prec@5 {val[prec5]:.3f} \t\n'
                      .format(epoch + 1, train=train_results, val=val_results))
 
-        values = dict(epoch=epoch + 1)
+        values = dict(epoch=epoch + 1, steps=trainer.training_steps)
         values.update({'training ' + k: v for k, v in train_results.items()})
         values.update({'validation ' + k: v for k, v in val_results.items()})
         results.add(**values)
