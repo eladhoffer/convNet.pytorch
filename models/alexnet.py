@@ -53,7 +53,7 @@ class AlexNetOWT_BN(nn.Module):
                                          std=[0.229, 0.224, 0.225])
         self.data_regime = [{
             'transform': transforms.Compose([
-                transforms.Scale(256),
+                transforms.Resize(256),
                 transforms.RandomCrop(224),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
@@ -61,12 +61,11 @@ class AlexNetOWT_BN(nn.Module):
         }]
         self.data_eval_regime = [{
             'transform': transforms.Compose([
-                transforms.Scale(256),
+                transforms.Resize(256),
                 transforms.CenterCrop(224),
                 transforms.ToTensor(),
                 normalize])
         }]
-
     def forward(self, x):
         x = self.features(x)
         x = x.view(-1, 256 * 6 * 6)

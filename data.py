@@ -104,7 +104,7 @@ class DataRegime(object):
 
     def set_epoch(self, epoch):
         self.epoch = epoch
-        if self._sampler is not None:
+        if self._sampler is not None and hasattr(self._sampler, 'set_epoch'):
             self._sampler.set_epoch(epoch)
 
     def __len__(self):
