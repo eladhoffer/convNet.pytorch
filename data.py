@@ -2,6 +2,8 @@ import os
 import torch
 import torchvision.datasets as datasets
 from torch.utils.data.distributed import DistributedSampler
+from torch.utils.data.sampler import RandomSampler
+from utils.dataset import DuplicateBatchSampler
 from utils.regime import Regime
 from preprocess import get_transform
 __DATASETS_DEFAULT_PATH = '/home/ehoffer/Datasets/'
@@ -50,7 +52,8 @@ _DATA_ARGS = {'name', 'split', 'transform',
 _DATALOADER_ARGS = {'batch_size', 'shuffle', 'sampler', 'batch_sampler',
                     'num_workers', 'collate_fn', 'pin_memory', 'drop_last',
                     'timeout', 'worker_init_fn'}
-_TRANSFORM_ARGS = {'transform_name', 'input_size', 'scale_size', 'normalize', 'augment'}
+_TRANSFORM_ARGS = {'transform_name', 'input_size',
+                   'scale_size', 'normalize', 'augment'}
 _OTHER_ARGS = {'distributed'}
 
 
@@ -84,9 +87,19 @@ class DataRegime(object):
                 setting['loader']['shuffle'] = None
                 # pin-memory currently broken for distributed
                 setting['loader']['pin_memory'] = False
+            if setting['other'].get('duplicates', 0) > 1:
+                setting['loader']['shuffle'] = None
+                sampler = setting['loader'].get(
+                    'sampler', RandomSampler(self._data))
+                setting['loader']['sampler'] = DuplicateBatchSampler(sampler, setting['loader']['batch_size'],
+                                                                     duplicates=setting['other']['duplicates'],
+                                                                     drop_last=setting['loader'].get('drop_last', False))
+
             self._sampler = setting['loader'].get('sampler', None)
             self._loader = torch.utils.data.DataLoader(
                 self._data, **setting['loader'])
+            if setting['other'].get('duplicates', 0) > 1:
+                self._loader.batch_sampler = self._sampler
         return self._loader
 
     def set_epoch(self, epoch):
