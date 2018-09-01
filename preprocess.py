@@ -1,4 +1,7 @@
 import torch
+from PIL import ImageFile
+ImageFile.LOAD_TRUNCATED_IMAGES = True
+
 import torchvision.transforms as transforms
 import random
 
