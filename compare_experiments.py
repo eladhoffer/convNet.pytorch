@@ -11,6 +11,8 @@ parser.add_argument('experiments', metavar='N', type=str, nargs='+',
                     help='pathes to multiple experiments')
 parser.add_argument('--legend', type=str, nargs='+',
                     help='legend to multiple experiments')
+parser.add_argument('--x_axis', type=str, default='epoch',
+                    help='x axis to experiments')
 parser.add_argument('--compare', type=str, nargs='+', default=['training error1', 'validation error1'],
                     help='values to compare')
 parser.add_argument('--colors', type=str, nargs='+',
@@ -35,18 +37,18 @@ def main():
         else:
             name = exp
         filename = exp + '/results.csv'
-        results[name] = pd.read_csv(filename)
+        results[name] = pd.read_csv(filename, index_col=None)
     figures = []
     for comp in args.compare:
         fig = figure(title=comp, tools=tools,
                      width=width, height=height,
-                     x_axis_label='epoch',
+                     x_axis_label=args.x_axis,
                      y_axis_label=comp,
                      x_axis_type=x_axis_type,
                      y_axis_type=y_axis_type)
         colors = cycle(args.colors)
         for i, (name, result) in enumerate(results.items()):
-            fig.line(result.index, result[comp],
+            fig.line(result[args.x_axis], result[comp],
                      line_width=line_width,
                      line_color=next(colors), legend=name)
         fig.legend.click_policy = "hide"
