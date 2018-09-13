@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+__all__ = ['mnist']
 
 class mnist_model(nn.Module):
 
@@ -39,5 +40,5 @@ class mnist_model(nn.Module):
         return out
 
 
-def model(**kwargs):
+def mnist(**kwargs):
     return mnist_model()
