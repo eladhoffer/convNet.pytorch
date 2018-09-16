@@ -53,7 +53,7 @@ _DATALOADER_ARGS = {'batch_size', 'shuffle', 'sampler', 'batch_sampler',
                     'num_workers', 'collate_fn', 'pin_memory', 'drop_last',
                     'timeout', 'worker_init_fn'}
 _TRANSFORM_ARGS = {'transform_name', 'input_size',
-                   'scale_size', 'normalize', 'augment'}
+                   'scale_size', 'normalize', 'augment', 'num_crops'}
 _OTHER_ARGS = {'distributed', 'duplicates'}
 
 

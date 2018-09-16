@@ -6,7 +6,7 @@ import torchvision.transforms as transforms
 import random
 
 __imagenet_stats = {'mean': [0.485, 0.456, 0.406],
-                   'std': [0.229, 0.224, 0.225]}
+                    'std': [0.229, 0.224, 0.225]}
 
 __imagenet_pca = {
     'eigval': torch.Tensor([0.2175, 0.0188, 0.0045]),
@@ -18,12 +18,24 @@ __imagenet_pca = {
 }
 
 
-def scale_crop(input_size, scale_size=None, normalize=__imagenet_stats):
-    t_list = [
-        transforms.CenterCrop(input_size),
-        transforms.ToTensor(),
-        transforms.Normalize(**normalize),
-    ]
+def scale_crop(input_size, scale_size=None, num_crops=1, normalize=__imagenet_stats):
+    assert num_crops in [1, 5, 10], "num crops must be in {1,5,10}"
+    convert_tensor = transforms.Compose([transforms.ToTensor(),
+                                         transforms.Normalize(**normalize)])
+    if num_crops == 1:
+        t_list = [
+            transforms.CenterCrop(input_size),
+            convert_tensor
+        ]
+    else:
+        if num_crops == 5:
+            t_list = [transforms.FiveCrop(input_size)]
+        elif num_crops == 10:
+            t_list = [transforms.TenCrop(input_size)]
+        # returns a 4D tensor
+        t_list.append(transforms.Lambda(lambda crops:
+                                        torch.stack([convert_tensor(crop) for crop in crops])))
+
     if scale_size != input_size:
         t_list = [transforms.Resize(scale_size)] + t_list
 
@@ -59,6 +71,8 @@ def inception_preproccess(input_size, normalize=__imagenet_stats):
         transforms.ToTensor(),
         transforms.Normalize(**normalize)
     ])
+
+
 def inception_color_preproccess(input_size, normalize=__imagenet_stats):
     return transforms.Compose([
         transforms.RandomResizedCrop(input_size),
@@ -75,7 +89,7 @@ def inception_color_preproccess(input_size, normalize=__imagenet_stats):
 
 
 def get_transform(transform_name='imagenet', input_size=None,
-                  scale_size=None, normalize=None, augment=True):
+                  scale_size=None, normalize=None, augment=True, num_crops=1):
     normalize = normalize or __imagenet_stats
     if transform_name == 'imagenet':
         scale_size = scale_size or 256
@@ -83,8 +97,8 @@ def get_transform(transform_name='imagenet', input_size=None,
         if augment:
             return inception_preproccess(input_size, normalize=normalize)
         else:
-            return scale_crop(input_size=input_size,
-                              scale_size=scale_size, normalize=normalize)
+            return scale_crop(input_size=input_size, scale_size=scale_size,
+                              num_crops=num_crops, normalize=normalize)
     elif 'cifar' in transform_name:
         input_size = input_size or 32
         if augment:
@@ -93,8 +107,8 @@ def get_transform(transform_name='imagenet', input_size=None,
                                    normalize=normalize)
         else:
             scale_size = scale_size or 32
-            return scale_crop(input_size=input_size,
-                              scale_size=scale_size, normalize=normalize)
+            return scale_crop(input_size=input_size, scale_size=scale_size,
+                              num_crops=num_crops, normalize=normalize)
     elif transform_name == 'mnist':
         normalize = {'mean': [0.5], 'std': [0.5]}
         input_size = input_size or 28
@@ -104,8 +118,8 @@ def get_transform(transform_name='imagenet', input_size=None,
                                    normalize=normalize)
         else:
             scale_size = scale_size or 32
-            return scale_crop(input_size=input_size,
-                              scale_size=scale_size, normalize=normalize)
+            return scale_crop(input_size=input_size, scale_size=scale_size,
+                              num_crops=num_crops, normalize=normalize)
 
 
 class Lighting(object):
