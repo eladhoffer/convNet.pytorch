@@ -273,6 +273,14 @@ def resnet(**config):
         torch.nn.Linear = QLinear
         torch.nn.Conv2d = QConv2d
         torch.nn.BatchNorm2d = RangeBN
+    
+    bn_norm = config.pop('bn_norm', None)
+    if bn_norm is not None:
+        from .modules.lp_norm import L1BatchNorm2d, TopkBatchNorm2d
+        if bn_norm == 'L1':
+            torch.nn.BatchNorm2d = L1BatchNorm2d
+        if bn_norm == 'TopK':
+            torch.nn.BatchNorm2d = TopkBatchNorm2d
 
     if dataset == 'imagenet':
         config.setdefault('num_classes', 1000)
