@@ -80,11 +80,11 @@ class Model(nn.Module):
 If you use the code in your paper, consider citing one of the implemented works.
 ```
 @inproceedings{hoffer2018fix,
-title={Fix your classifier: the marginal value of training the last weight layer},
-author={Elad Hoffer and Itay Hubara and Daniel Soudry},
-booktitle={International Conference on Learning Representations},
-year={2018},
-url={https://openreview.net/forum?id=S1Dh8Tg0-},
+  title={Fix your classifier: the marginal value of training the last weight layer},
+  author={Elad Hoffer and Itay Hubara and Daniel Soudry},
+  booktitle={International Conference on Learning Representations},
+  year={2018},
+  url={https://openreview.net/forum?id=S1Dh8Tg0-},
 }
 ```
 ```
