@@ -12,15 +12,6 @@ def conv3x3(in_planes, out_planes, stride=1, groups=1, bias=False):
                      padding=1, groups=groups, bias=bias)
 
 
-def norm2d(in_planes, num_groups=8, method='batch_norm'):
-    if method == 'batch_norm':
-        return nn.BatchNorm2d(in_planes)
-    elif method == 'group_norm':
-        return nn.GroupNorm(num_groups, in_planes)
-    else:
-        return lambda x: x
-
-
 def init_model(model):
     for m in model.modules():
         if isinstance(m, nn.Conv2d):
@@ -287,9 +278,13 @@ def resnet(**config):
         config.setdefault('num_classes', 1000)
         depth = config.pop('depth', 50)
         if depth == 18:
-            config.update(dict(block=BasicBlock, layers=[2, 2, 2, 2]))
+            config.update(dict(block=BasicBlock,
+                               layers=[2, 2, 2, 2],
+                               expansion=1))
         if depth == 34:
-            config.update(dict(block=BasicBlock, layers=[3, 4, 6, 3]))
+            config.update(dict(block=BasicBlock,
+                               layers=[3, 4, 6, 3],
+                               expansion=1))
         if depth == 50:
             config.update(dict(block=Bottleneck, layers=[3, 4, 6, 3]))
         if depth == 101:
