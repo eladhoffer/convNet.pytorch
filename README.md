@@ -9,6 +9,11 @@ It is based off [imagenet example in pytorch](https://github.com/pytorch/example
   - Definition of preprocessing and optimization regime for each model
   - Distributed training
  
+ To clone:
+ ```
+ git clone --recursive https://github.com/eladhoffer/convNet.pytorch
+ ```
+ 
  example for efficient multi-gpu training of resnet50 (4 gpus, label-smoothing, fast regime by fast-ai):
  ```
  python -m torch.distributed.launch --nproc_per_node=4  main.py --model resnet --model-config "{'depth': 50, 'regime': 'fast'}" --eval-batch-size 512 --save resnet50_fast --label-smoothing 0.1
@@ -73,4 +78,28 @@ class Model(nn.Module):
 # Citation
 
 If you use the code in your paper, consider citing one of the implemented works.
-
+```
+@inproceedings{hoffer2018fix,
+title={Fix your classifier: the marginal value of training the last weight layer},
+author={Elad Hoffer and Itay Hubara and Daniel Soudry},
+booktitle={International Conference on Learning Representations},
+year={2018},
+url={https://openreview.net/forum?id=S1Dh8Tg0-},
+}
+```
+```
+@inproceedings{hoffer2018norm,
+  title={Norm matters: efficient and accurate normalization schemes in deep networks},
+  author={Hoffer, Elad and Banner, Ron and Golan, Itay and Soudry, Daniel},
+  booktitle={Advances in Neural Information Processing Systems},
+  year={2018}
+}
+```
+```
+@inproceedings{banner2018scalable,
+  title={Scalable Methods for 8-bit Training of Neural Networks},
+  author={Banner, Ron and Hubara, Itay and Hoffer, Elad and Soudry, Daniel},
+  booktitle={Advances in Neural Information Processing Systems},
+  year={2018}
+}
+```
