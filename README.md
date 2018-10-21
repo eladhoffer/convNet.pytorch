@@ -14,6 +14,17 @@ It is based off [imagenet example in pytorch](https://github.com/pytorch/example
  python -m torch.distributed.launch --nproc_per_node=4  main.py --model resnet --model-config "{'depth': 50, 'regime': 'fast'}" --eval-batch-size 512 --save resnet50_fast --label-smoothing 0.1
 ```
 
+This code was used for several recent papers:
+  - [Hoffer et al. (2018): Fix your classifier: the marginal value of training the last weight layer](https://arxiv.org/abs/1801.04540)
+  - [Hoffer et al. (2018): Norm matters: efficient and accurate normalization schemes in deep networks](https://arxiv.org/abs/1803.01814)
+  - [Banner et al. (2018): Scalable Methods for 8-bit Training of Neural Networks](https://arxiv.org/abs/1805.11046)
+
+
+
+For example, training ResNet18 with L1 norm (instead of batch-norm) from "Norm matters":
+```
+python -m torch.distributed.launch --nproc_per_node=4 main.py --model resnet --model-config "{'depth': 18, 'bn_norm': 'L1'}" --save resnet18_l1 -b 128
+```
 ## Dependencies
 
 - [pytorch](<http://www.pytorch.org>)
@@ -57,3 +68,9 @@ class Model(nn.Module):
  def model(**kwargs):
         return Model()
 ```
+
+
+# Citation
+
+If you use the code in your paper, consider citing one of the implemented works.
+
