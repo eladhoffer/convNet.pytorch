@@ -8,9 +8,9 @@ from preprocess import get_transform
 
 
 def get_dataset(name, split='train', transform=None,
-                target_transform=None, download=True, datasets_path='./datasets'):
+                target_transform=None, download=True, datasets_path='~/Datasets'):
     train = (split == 'train')
-    root = os.path.join(datasets_path, name)
+    root = os.path.join(os.path.expanduser(datasets_path), name)
     if name == 'cifar10':
         return datasets.CIFAR10(root=root,
                                 train=train,
