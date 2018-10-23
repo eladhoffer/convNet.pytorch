@@ -19,23 +19,26 @@ It is based off [imagenet example in pytorch](https://github.com/pytorch/example
  python -m torch.distributed.launch --nproc_per_node=4  main.py --model resnet --model-config "{'depth': 50, 'regime': 'fast'}" --eval-batch-size 512 --save resnet50_fast --label-smoothing 0.1
 ```
 
-This code was used for several recent papers:
+This code can be used to implement several recent papers:
   - [Hoffer et al. (2018): Fix your classifier: the marginal value of training the last weight layer](https://arxiv.org/abs/1801.04540)
   - [Hoffer et al. (2018): Norm matters: efficient and accurate normalization schemes in deep networks](https://arxiv.org/abs/1803.01814)
+  
+      For example, training ResNet18 with L1 norm (instead of batch-norm):
+      ```
+      python main.py --model resnet --model-config "{'depth': 18, 'bn_norm': 'L1'}" --save resnet18_l1 -b 128
+      ```
   - [Banner et al. (2018): Scalable Methods for 8-bit Training of Neural Networks](https://arxiv.org/abs/1805.11046)
-
-
-
-For example, training ResNet18 with L1 norm (instead of batch-norm) from "Norm matters":
-```
-python main.py --model resnet --model-config "{'depth': 18, 'bn_norm': 'L1'}" --save resnet18_l1 -b 128
-```
-
-To train the same model with 8-bit quantization ("Scalable methods"):
-```
-python main.py --model resnet --model-config "{'depth': 18, 'quantize':True}" --save resnet18_8bit -b 64
-```
-
+  
+    For example, training ResNet18 with 8-bit quantization:
+    ```
+    python main.py --model resnet --model-config "{'depth': 18, 'quantize':True}" --save resnet18_8bit -b 64
+    ```
+  - [Augment your batch: better training with larger batches](https://openreview.net/forum?id=H1V4QhAqYQ&noteId=BylUSs_3Y7)
+    
+    For example, training the resnet44 + cutout example in paper:
+    ```
+    python main.py --dataset cifar10 --model resnet --model-config "{'depth': 44}"  --duplicates 40 --cutout -b 64 --epochs 100 --save resnet44_cutout_m-40
+    ```
 ## Dependencies
 
 - [pytorch](<http://www.pytorch.org>)
@@ -45,7 +48,7 @@ python main.py --model resnet --model-config "{'depth': 18, 'quantize':True}" --
 
 
 ## Data
-- Configure your dataset path at **data.py**.
+- Configure your dataset path with ``datasets-dir`` argument
 - To get the ILSVRC data, you should register on their site for access: <http://www.image-net.org/>
 
 
