@@ -29,6 +29,8 @@ parser.add_argument('--results-dir', metavar='RESULTS_DIR', default='./results',
                     help='results dir')
 parser.add_argument('--save', metavar='SAVE', default='',
                     help='saved folder')
+parser.add_argument('--datasets-dir', metavar='DATASETS_DIR', default='~/Datasets',
+                    help='datasets dir')
 parser.add_argument('--dataset', metavar='DATASET', default='imagenet',
                     help='dataset name or folder')
 parser.add_argument('--model', '-a', metavar='MODEL', default='alexnet',
@@ -70,6 +72,10 @@ parser.add_argument('--optimizer', default='SGD', type=str, metavar='OPT',
                     help='optimizer function used')
 parser.add_argument('--label-smoothing', default=0, type=float,
                     help='label smoothing coefficient - default 0')
+parser.add_argument('--duplicates', default=1, type=int,
+                    help='number of augmentations over singel example')
+parser.add_argument('--cutout', action='store_true', default=False,
+                    help='cutout augmentations')
 parser.add_argument('--grad-clip', default=-1, type=float,
                     help='maximum grad norm value, -1 for none')
 parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
@@ -189,7 +195,7 @@ def main():
     # Evaluation Data loading code
     args.eval_batch_size = args.eval_batch_size if args.eval_batch_size > 0 else args.batch_size
     val_data = DataRegime(getattr(model, 'data_eval_regime', None),
-                          defaults={'name': args.dataset, 'split': 'val', 'augment': False,
+                          defaults={'datasets_path': args.datasets_dir, 'name': args.dataset, 'split': 'val', 'augment': False,
                                     'input_size': args.input_size, 'batch_size': args.eval_batch_size, 'shuffle': False,
                                     'num_workers': args.workers, 'pin_memory': True, 'drop_last': False})
 
@@ -200,10 +206,11 @@ def main():
 
     # Training Data loading code
     train_data = DataRegime(getattr(model, 'data_regime', None),
-                            defaults={'name': args.dataset, 'split': 'train', 'augment': True,
+                            defaults={'datasets_path': args.datasets_dir, 'name': args.dataset, 'split': 'train', 'augment': True,
                                       'input_size': args.input_size,  'batch_size': args.batch_size, 'shuffle': True,
                                       'num_workers': args.workers, 'pin_memory': True, 'drop_last': True,
-                                      'distributed': args.distributed, })
+                                      'distributed': args.distributed, 'duplicates': args.duplicates,
+                                      'cutout': {'holes': 1, 'length': 16} if args.cutout else None})
 
     logging.info('optimization regime: %s', optim_regime)
     trainer.training_steps = args.start_epoch * len(train_data)
@@ -214,7 +221,8 @@ def main():
         logging.info('\nStarting Epoch: {0}\n'.format(epoch + 1))
 
         # train for one epoch
-        train_results = trainer.train(train_data.get_loader())
+        train_results = trainer.train(train_data.get_loader(),
+                                      duplicates=args.duplicates)
 
         # evaluate on validation set
         val_results = trainer.validate(val_data.get_loader())

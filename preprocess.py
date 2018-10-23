@@ -1,14 +1,12 @@
 import torch
-from PIL import ImageFile
-ImageFile.LOAD_TRUNCATED_IMAGES = True
-
+import numpy as np
 import torchvision.transforms as transforms
 import random
 
-__imagenet_stats = {'mean': [0.485, 0.456, 0.406],
-                    'std': [0.229, 0.224, 0.225]}
+_IMAGENET_STATS = {'mean': [0.485, 0.456, 0.406],
+                   'std': [0.229, 0.224, 0.225]}
 
-__imagenet_pca = {
+_IMAGENET_PCA = {
     'eigval': torch.Tensor([0.2175, 0.0188, 0.0045]),
     'eigvec': torch.Tensor([
         [-0.5675,  0.7192,  0.4009],
@@ -18,7 +16,7 @@ __imagenet_pca = {
 }
 
 
-def scale_crop(input_size, scale_size=None, num_crops=1, normalize=__imagenet_stats):
+def scale_crop(input_size, scale_size=None, num_crops=1, normalize=_IMAGENET_STATS):
     assert num_crops in [1, 5, 10], "num crops must be in {1,5,10}"
     convert_tensor = transforms.Compose([transforms.ToTensor(),
                                          transforms.Normalize(**normalize)])
@@ -42,7 +40,7 @@ def scale_crop(input_size, scale_size=None, num_crops=1, normalize=__imagenet_st
     return transforms.Compose(t_list)
 
 
-def scale_random_crop(input_size, scale_size=None, normalize=__imagenet_stats):
+def scale_random_crop(input_size, scale_size=None, normalize=_IMAGENET_STATS):
     t_list = [
         transforms.RandomCrop(input_size),
         transforms.ToTensor(),
@@ -54,7 +52,7 @@ def scale_random_crop(input_size, scale_size=None, normalize=__imagenet_stats):
     transforms.Compose(t_list)
 
 
-def pad_random_crop(input_size, scale_size=None, normalize=__imagenet_stats):
+def pad_random_crop(input_size, scale_size=None, normalize=_IMAGENET_STATS):
     padding = int((scale_size - input_size) / 2)
     return transforms.Compose([
         transforms.RandomCrop(input_size, padding=padding),
@@ -64,7 +62,7 @@ def pad_random_crop(input_size, scale_size=None, normalize=__imagenet_stats):
     ])
 
 
-def inception_preproccess(input_size, normalize=__imagenet_stats):
+def inception_preproccess(input_size, normalize=_IMAGENET_STATS):
     return transforms.Compose([
         transforms.RandomResizedCrop(input_size),
         transforms.RandomHorizontalFlip(),
@@ -73,53 +71,68 @@ def inception_preproccess(input_size, normalize=__imagenet_stats):
     ])
 
 
-def inception_color_preproccess(input_size, normalize=__imagenet_stats):
+def inception_color_preproccess(input_size, normalize=_IMAGENET_STATS):
     return transforms.Compose([
         transforms.RandomResizedCrop(input_size),
         transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        ColorJitter(
+        transforms.ColorJitter(
             brightness=0.4,
             contrast=0.4,
             saturation=0.4,
         ),
-        Lighting(0.1, __imagenet_pca['eigval'], __imagenet_pca['eigvec']),
+        transforms.ToTensor(),
+        Lighting(0.1, _IMAGENET_PCA['eigval'], _IMAGENET_PCA['eigvec']),
         transforms.Normalize(**normalize)
     ])
 
 
+def multi_transform(transform_fn, duplicates=1, dim=0):
+    """preforms multiple transforms, useful to implement inference time augmentation or
+     "batch augmentation" from https://openreview.net/forum?id=H1V4QhAqYQ&noteId=BylUSs_3Y7
+    """
+    if duplicates > 1:
+        return transforms.Lambda(lambda x: torch.stack([transform_fn(x) for _ in range(duplicates)], dim=dim))
+    else:
+        return transform_fn
+
+
 def get_transform(transform_name='imagenet', input_size=None,
-                  scale_size=None, normalize=None, augment=True, num_crops=1):
-    normalize = normalize or __imagenet_stats
-    if transform_name == 'imagenet':
+                  scale_size=None, normalize=None, augment=True, cutout=None, duplicates=1, num_crops=1):
+    normalize = normalize or _IMAGENET_STATS
+    transform_fn = None
+    if transform_name == 'imagenet':  # inception augmentation is default for imagenet
         scale_size = scale_size or 256
         input_size = input_size or 224
         if augment:
-            return inception_preproccess(input_size, normalize=normalize)
+            transform_fn = inception_preproccess(input_size,
+                                                 normalize=normalize)
         else:
-            return scale_crop(input_size=input_size, scale_size=scale_size,
-                              num_crops=num_crops, normalize=normalize)
-    elif 'cifar' in transform_name:
+            transform_fn = scale_crop(input_size=input_size, scale_size=scale_size,
+                                      num_crops=num_crops, normalize=normalize)
+    elif 'cifar' in transform_name:  # resnet augmentation is default for imagenet
         input_size = input_size or 32
         if augment:
             scale_size = scale_size or 40
-            return pad_random_crop(input_size, scale_size=scale_size,
-                                   normalize=normalize)
+            transform_fn = pad_random_crop(input_size, scale_size=scale_size,
+                                           normalize=normalize)
         else:
             scale_size = scale_size or 32
-            return scale_crop(input_size=input_size, scale_size=scale_size,
-                              num_crops=num_crops, normalize=normalize)
+            transform_fn = scale_crop(input_size=input_size, scale_size=scale_size,
+                                      num_crops=num_crops, normalize=normalize)
     elif transform_name == 'mnist':
         normalize = {'mean': [0.5], 'std': [0.5]}
         input_size = input_size or 28
         if augment:
             scale_size = scale_size or 32
-            return pad_random_crop(input_size, scale_size=scale_size,
-                                   normalize=normalize)
+            transform_fn = pad_random_crop(input_size, scale_size=scale_size,
+                                           normalize=normalize)
         else:
             scale_size = scale_size or 32
-            return scale_crop(input_size=input_size, scale_size=scale_size,
-                              num_crops=num_crops, normalize=normalize)
+            transform_fn = scale_crop(input_size=input_size, scale_size=scale_size,
+                                      num_crops=num_crops, normalize=normalize)
+    if cutout is not None:
+        transform_fn.transforms.append(Cutout(**cutout))
+    return multi_transform(transform_fn, duplicates)
 
 
 class Lighting(object):
@@ -143,73 +156,46 @@ class Lighting(object):
         return img.add(rgb.view(3, 1, 1).expand_as(img))
 
 
-class Grayscale(object):
-
-    def __call__(self, img):
-        gs = img.clone()
-        gs[0].mul_(0.299).add_(0.587, gs[1]).add_(0.114, gs[2])
-        gs[1].copy_(gs[0])
-        gs[2].copy_(gs[0])
-        return gs
+class Cutout(object):
+    """
+    Randomly mask out one or more patches from an image.
+    taken from https://github.com/uoguelph-mlrg/Cutout
 
 
-class Saturation(object):
-
-    def __init__(self, var):
-        self.var = var
-
-    def __call__(self, img):
-        gs = Grayscale()(img)
-        alpha = random.uniform(0, self.var)
-        return img.lerp(gs, alpha)
-
-
-class Brightness(object):
-
-    def __init__(self, var):
-        self.var = var
-
-    def __call__(self, img):
-        gs = img.new().resize_as_(img).zero_()
-        alpha = random.uniform(0, self.var)
-        return img.lerp(gs, alpha)
-
-
-class Contrast(object):
-
-    def __init__(self, var):
-        self.var = var
-
-    def __call__(self, img):
-        gs = Grayscale()(img)
-        gs.fill_(gs.mean())
-        alpha = random.uniform(0, self.var)
-        return img.lerp(gs, alpha)
-
-
-class RandomOrder(object):
-    """ Composes several transforms together in random order.
+    Args:
+        holes (int): Number of patches to cut out of each image.
+        length (int): The length (in pixels) of each square patch.
     """
 
-    def __init__(self, transforms):
-        self.transforms = transforms
+    def __init__(self, holes, length):
+        self.holes = holes
+        self.length = length
 
     def __call__(self, img):
-        if self.transforms is None:
-            return img
-        order = torch.randperm(len(self.transforms))
-        for i in order:
-            img = self.transforms[i](img)
+        """
+        Args:
+            img (Tensor): Tensor image of size (C, H, W).
+        Returns:
+            Tensor: Image with holes of dimension length x length cut out of it.
+        """
+        h = img.size(1)
+        w = img.size(2)
+
+        mask = np.ones((h, w), np.float32)
+
+        for n in range(self.holes):
+            y = np.random.randint(h)
+            x = np.random.randint(w)
+
+            y1 = np.clip(y - self.length // 2, 0, h)
+            y2 = np.clip(y + self.length // 2, 0, h)
+            x1 = np.clip(x - self.length // 2, 0, w)
+            x2 = np.clip(x + self.length // 2, 0, w)
+
+            mask[y1: y2, x1: x2] = 0.
+
+        mask = torch.from_numpy(mask)
+        mask = mask.expand_as(img)
+        img = img * mask
+
         return img
-
-
-class ColorJitter(RandomOrder):
-
-    def __init__(self, brightness=0.4, contrast=0.4, saturation=0.4):
-        self.transforms = []
-        if brightness != 0:
-            self.transforms.append(Brightness(brightness))
-        if contrast != 0:
-            self.transforms.append(Contrast(contrast))
-        if saturation != 0:
-            self.transforms.append(Saturation(saturation))

@@ -64,7 +64,7 @@ class Trainer(object):
 
         return output, loss, grad
 
-    def forward(self, data_loader, num_steps=None, training=False):
+    def forward(self, data_loader, num_steps=None, training=False, duplicates=1):
         meters = {name: AverageMeter()
                   for name in ['step', 'data', 'loss', 'prec1', 'prec5']}
         if training and self.grad_clip > 0:
@@ -83,6 +83,11 @@ class Trainer(object):
             meters['data'].update(time.time() - end)
             target = target.to(self.device)
             inputs = inputs.to(self.device, dtype=self.dtype)
+
+            if duplicates > 1:  # multiple versions for each sample (dim 1)
+                target = target.view(-1, 1).expand(-1, inputs.size(1))
+                inputs = inputs.flatten(0, 1)
+                target = target.flatten(0, 1)
 
             output, loss, grad = self._step(inputs, target, training=training)
 
@@ -119,14 +124,14 @@ class Trainer(object):
 
         return meter_results(meters)
 
-    def train(self, data_loader):
+    def train(self, data_loader, duplicates=1):
         # switch to train mode
         self.model.train()
 
-        return self.forward(data_loader, training=True)
+        return self.forward(data_loader, duplicates=duplicates, training=True)
 
-    def validate(self, data_loader):
+    def validate(self, data_loader, duplicates=1):
         # switch to evaluate mode
         self.model.eval()
         with torch.no_grad():
-            return self.forward(data_loader, training=False)
+            return self.forward(data_loader, duplicates=duplicates, training=False)
