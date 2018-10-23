@@ -28,8 +28,14 @@ This code was used for several recent papers:
 
 For example, training ResNet18 with L1 norm (instead of batch-norm) from "Norm matters":
 ```
-python -m torch.distributed.launch --nproc_per_node=4 main.py --model resnet --model-config "{'depth': 18, 'bn_norm': 'L1'}" --save resnet18_l1 -b 128
+python main.py --model resnet --model-config "{'depth': 18, 'bn_norm': 'L1'}" --save resnet18_l1 -b 128
 ```
+
+To train the same model with 8-bit quantization ("Scalable methods"):
+```
+python main.py --model resnet --model-config "{'depth': 18, 'quantize':True}" --save resnet18_8bit -b 64
+```
+
 ## Dependencies
 
 - [pytorch](<http://www.pytorch.org>)
