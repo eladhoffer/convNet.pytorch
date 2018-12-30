@@ -24,12 +24,6 @@ class Trainer(object):
         self.print_freq = print_freq
         self.grad_clip = grad_clip
 
-        def empty_reg(m): return 0
-        self.regularizer = getattr(model, 'regularization', empty_reg)
-        self.regularizer_pre_step = getattr(
-            model, 'regularization_pre_step', empty_reg)
-        self.regularizer_post_step = getattr(
-            model, 'regularization_post_step', empty_reg)
         if distributed:
             self.model = nn.parallel.DistributedDataParallel(model,
                                                              device_ids=[
@@ -44,7 +38,6 @@ class Trainer(object):
         # compute output
         output = self.model(inputs)
         loss = self.criterion(output, target)
-        loss += self.regularizer(self.model)
         grad = None
 
         if isinstance(output, list) or isinstance(output, tuple):
@@ -55,11 +48,9 @@ class Trainer(object):
             # compute gradient and do SGD step
             self.optimizer.zero_grad()
             loss.backward()
-            self.regularizer_pre_step(self.model)
             if self.grad_clip > 0:
                 grad = clip_grad_norm_(self.model.parameters(), self.grad_clip)
             self.optimizer.step()
-            self.regularizer_post_step(self.model)
             self.training_steps += 1
 
         return output, loss, grad

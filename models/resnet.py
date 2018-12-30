@@ -30,6 +30,15 @@ def init_model(model):
     model.fc.bias.data.zero_()
 
 
+def weight_decay_config(value=1e-4, log=False):
+    return {'name': 'WeightDecay',
+            'value': value,
+            'log': log,
+            'filter': {'parameter_name': lambda n: not n.endswith('bias'),
+                       'module': lambda m: not isinstance(m, nn.BatchNorm2d)}
+            }
+
+
 class BasicBlock(nn.Module):
 
     def __init__(self, inplanes, planes,  stride=1, expansion=1, downsample=None, groups=1, residual_block=None):
@@ -154,14 +163,6 @@ class ResNet(nn.Module):
         x = self.fc(x)
         return x
 
-    @staticmethod
-    def regularization_pre_step(model, weight_decay=1e-4):
-        with torch.no_grad():
-            for m in model.modules():
-                if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
-                    m.weight.grad.add_(weight_decay * m.weight)
-        return 0
-
 
 class ResNet_imagenet(ResNet):
 
@@ -192,8 +193,8 @@ class ResNet_imagenet(ResNet):
             return "lambda t: {'lr': %s + t * %s}" % (lr0, rate)
         if regime == 'normal':
             self.regime = [
-                {'epoch': 0, 'optimizer': 'SGD', 'momentum': 0.9,
-                    'step_lambda': ramp_up_lr(0.1, 0.1 * scale_lr, 5004 * 5 / scale_lr)},
+                {'epoch': 0, 'optimizer': 'SGD', 'momentum': 0.9, 'regularizer': weight_decay_config(1e-4),
+                 'step_lambda': ramp_up_lr(0.1, 0.1 * scale_lr, 5004 * 5 / scale_lr)},
                 {'epoch': 5,  'lr': scale_lr * 1e-1},
                 {'epoch': 30, 'lr': scale_lr * 1e-2},
                 {'epoch': 60, 'lr': scale_lr * 1e-3},
@@ -201,8 +202,8 @@ class ResNet_imagenet(ResNet):
             ]
         elif regime == 'fast':
             self.regime = [
-                {'epoch': 0, 'optimizer': 'SGD', 'momentum': 0.9,
-                    'step_lambda': ramp_up_lr(0.1, 0.1 * 4 * scale_lr, 5004 * 4 / (4 * scale_lr))},
+                {'epoch': 0, 'optimizer': 'SGD', 'momentum': 0.9, 'regularizer': weight_decay_config(1e-4),
+                 'step_lambda': ramp_up_lr(0.1, 0.1 * 4 * scale_lr, 5004 * 4 / (4 * scale_lr))},
                 {'epoch': 4,  'lr': 4 * scale_lr * 1e-1},
                 {'epoch': 18, 'lr': scale_lr * 1e-1},
                 {'epoch': 21, 'lr': scale_lr * 1e-2},
@@ -217,8 +218,8 @@ class ResNet_imagenet(ResNet):
         elif regime == 'small':
             scale_lr *= 4
             self.regime = [
-                {'epoch': 0, 'optimizer': 'SGD',
-                    'momentum': 0.9, 'lr': scale_lr * 1e-1},
+                {'epoch': 0, 'optimizer': 'SGD', 'regularizer': weight_decay_config(1e-4),
+                 'momentum': 0.9, 'lr': scale_lr * 1e-1},
                 {'epoch': 30, 'lr': scale_lr * 1e-2},
                 {'epoch': 60, 'lr': scale_lr * 1e-3},
                 {'epoch': 80, 'lr': scale_lr * 1e-4}
@@ -258,10 +259,10 @@ class ResNet_cifar(ResNet):
 
         init_model(self)
         self.regime = [
-            {'epoch': 0, 'optimizer': 'SGD', 'lr': 1e-1,
-             'weight_decay': 0, 'momentum': 0.9},
+            {'epoch': 0, 'optimizer': 'SGD', 'lr': 1e-1, 'momentum': 0.9,
+             'regularizer': weight_decay_config(1e-4)},
             {'epoch': 81, 'lr': 1e-2},
-            {'epoch': 122, 'lr': 1e-3, 'weight_decay': 0},
+            {'epoch': 122, 'lr': 1e-3},
             {'epoch': 164, 'lr': 1e-4}
         ]
 
@@ -273,7 +274,7 @@ def resnet(**config):
         torch.nn.Linear = QLinear
         torch.nn.Conv2d = QConv2d
         torch.nn.BatchNorm2d = RangeBN
-    
+
     bn_norm = config.pop('bn_norm', None)
     if bn_norm is not None:
         from .modules.lp_norm import L1BatchNorm2d, TopkBatchNorm2d

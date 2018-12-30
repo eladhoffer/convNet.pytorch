@@ -22,6 +22,20 @@ def init_model(model):
             m.bias.data.zero_()
 
 
+def weight_decay_config(value=1e-4, log=False):
+    def regularize_layer(m):
+        non_depthwise_conv = isinstance(m, nn.Conv2d) \
+            and m.groups != m.in_channels
+        return isinstance(m, nn.Linear) or non_depthwise_conv
+
+    return {'name': 'WeightDecay',
+            'value': value,
+            'log': log,
+            'filter': {'parameter_name': lambda n: not n.endswith('bias'),
+                       'module': regularize_layer}
+            }
+
+
 class ExpandedConv2d(nn.Module):
 
     def __init__(self, in_channels, out_channels, expansion=1, kernel_size=3,
@@ -119,22 +133,12 @@ class MobileNet_v2(nn.Module):
             ]
 
         self.regime = [
-            {'epoch': 0, 'optimizer': 'SGD',
-                'momentum': 0.9, 'lr': scale_lr * 1e-1},
+            {'epoch': 0, 'optimizer': 'SGD', 'momentum': 0.9, 'lr': scale_lr * 1e-1,
+             'regularizer': weight_decay_config(1e-4)},
             {'epoch': 30, 'lr': scale_lr * 1e-2},
             {'epoch': 60, 'lr': scale_lr * 1e-3},
             {'epoch': 80, 'lr': scale_lr * 1e-4}
         ]
-
-    @staticmethod
-    def regularization_pre_step(model, weight_decay=1e-4):
-        with torch.no_grad():
-            for m in model.modules():
-                non_depthwise_conv = isinstance(m, nn.Conv2d) \
-                    and m.groups != m.in_channels
-                if isinstance(m, nn.Linear) or non_depthwise_conv:
-                    m.weight.grad.add_(weight_decay * m.weight)
-        return 0
 
     def forward(self, x):
         x = self.features(x)

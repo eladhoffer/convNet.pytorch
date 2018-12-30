@@ -185,7 +185,7 @@ def main():
                                               'momentum': args.momentum,
                                               'weight_decay': args.weight_decay}])
 
-    optimizer = OptimRegime(model.parameters(), optim_regime)
+    optimizer = OptimRegime(model, optim_regime)
 
     trainer = Trainer(model, criterion, optimizer,
                       device_ids=args.device_ids, device=args.device, dtype=dtype,
