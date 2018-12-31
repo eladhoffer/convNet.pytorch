@@ -74,6 +74,8 @@ parser.add_argument('--label-smoothing', default=0, type=float,
                     help='label smoothing coefficient - default 0')
 parser.add_argument('--duplicates', default=1, type=int,
                     help='number of augmentations over singel example')
+parser.add_argument('--chunk-batch', default=1, type=int,
+                    help='chunk batch size for multiple passes (training)')
 parser.add_argument('--cutout', action='store_true', default=False,
                     help='cutout augmentations')
 parser.add_argument('--grad-clip', default=-1, type=float,
@@ -222,7 +224,8 @@ def main():
 
         # train for one epoch
         train_results = trainer.train(train_data.get_loader(),
-                                      duplicates=args.duplicates)
+                                      duplicates=args.duplicates,
+                                      chunk_batch=args.chunk_batch)
 
         # evaluate on validation set
         val_results = trainer.validate(val_data.get_loader())

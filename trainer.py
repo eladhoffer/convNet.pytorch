@@ -34,28 +34,48 @@ class Trainer(object):
         else:
             self.model = model
 
-    def _step(self, inputs, target, training=False):
-        # compute output
-        output = self.model(inputs)
-        loss = self.criterion(output, target)
-        grad = None
-
-        if isinstance(output, list) or isinstance(output, tuple):
-            output = output[0]
+    def _step(self, inputs_batch, target_batch, training=False, chunk_batch=1):
+        outputs = []
+        total_loss = 0
+        total_grad = None
 
         if training:
-            self.optimizer.update(self.epoch, self.training_steps)
-            # compute gradient and do SGD step
             self.optimizer.zero_grad()
-            loss.backward()
-            if self.grad_clip > 0:
-                grad = clip_grad_norm_(self.model.parameters(), self.grad_clip)
-            self.optimizer.step()
-            self.training_steps += 1
 
-        return output, loss, grad
+        for inputs, target in zip(inputs_batch.chunk(chunk_batch, dim=0),
+                                  target_batch.chunk(chunk_batch, dim=0)):
+            target = target.to(self.device)
+            inputs = inputs.to(self.device, dtype=self.dtype)
 
-    def forward(self, data_loader, num_steps=None, training=False, duplicates=1):
+            # compute output
+            output = self.model(inputs)
+            loss = self.criterion(output, target)
+            grad = None
+
+            if chunk_batch > 1:
+                loss = loss / chunk_batch
+
+            if isinstance(output, list) or isinstance(output, tuple):
+                output = output[0]
+
+            if training:
+                self.optimizer.update(self.epoch, self.training_steps)
+                # compute gradient and do SGD step
+                loss.backward()
+                if self.grad_clip > 0:
+                    grad = clip_grad_norm_(
+                        self.model.parameters(), self.grad_clip)
+                    total_grad += float(total_grad)
+                self.optimizer.step()
+                self.training_steps += 1
+
+            total_loss += float(loss)
+            outputs.append(output.detach())
+
+        outputs = torch.cat(outputs, dim=0)
+        return outputs, total_loss, grad
+
+    def forward(self, data_loader, num_steps=None, training=False, duplicates=1, chunk_batch=1):
         meters = {name: AverageMeter()
                   for name in ['step', 'data', 'loss', 'prec1', 'prec5']}
         if training and self.grad_clip > 0:
@@ -72,18 +92,17 @@ class Trainer(object):
         for i, (inputs, target) in enumerate(data_loader):
             # measure data loading time
             meters['data'].update(time.time() - end)
-            target = target.to(self.device)
-            inputs = inputs.to(self.device, dtype=self.dtype)
-
             if duplicates > 1:  # multiple versions for each sample (dim 1)
                 target = target.view(-1, 1).expand(-1, inputs.size(1))
                 inputs = inputs.flatten(0, 1)
                 target = target.flatten(0, 1)
 
-            output, loss, grad = self._step(inputs, target, training=training)
+            output, loss, grad = self._step(inputs, target,
+                                            training=training,
+                                            chunk_batch=chunk_batch)
 
             # measure accuracy and record loss
-            prec1, prec5 = accuracy(output.detach(), target, topk=(1, 5))
+            prec1, prec5 = accuracy(output, target, topk=(1, 5))
             meters['loss'].update(float(loss), inputs.size(0))
             meters['prec1'].update(float(prec1), inputs.size(0))
             meters['prec5'].update(float(prec5), inputs.size(0))
@@ -115,11 +134,11 @@ class Trainer(object):
 
         return meter_results(meters)
 
-    def train(self, data_loader, duplicates=1):
+    def train(self, data_loader, duplicates=1, chunk_batch=1):
         # switch to train mode
         self.model.train()
 
-        return self.forward(data_loader, duplicates=duplicates, training=True)
+        return self.forward(data_loader, duplicates=duplicates, training=True, chunk_batch=chunk_batch)
 
     def validate(self, data_loader, duplicates=1):
         # switch to evaluate mode
