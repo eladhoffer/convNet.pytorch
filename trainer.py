@@ -37,10 +37,10 @@ class Trainer(object):
     def _step(self, inputs_batch, target_batch, training=False, chunk_batch=1):
         outputs = []
         total_loss = 0
-        total_grad = None
 
         if training:
             self.optimizer.zero_grad()
+            self.optimizer.update(self.epoch, self.training_steps)
 
         for inputs, target in zip(inputs_batch.chunk(chunk_batch, dim=0),
                                   target_batch.chunk(chunk_batch, dim=0)):
@@ -58,19 +58,18 @@ class Trainer(object):
             if isinstance(output, list) or isinstance(output, tuple):
                 output = output[0]
 
+            outputs.append(output.detach())
+
             if training:
-                self.optimizer.update(self.epoch, self.training_steps)
-                # compute gradient and do SGD step
-                loss.backward()
-                if self.grad_clip > 0:
-                    grad = clip_grad_norm_(
-                        self.model.parameters(), self.grad_clip)
-                    total_grad += float(total_grad)
-                self.optimizer.step()
-                self.training_steps += 1
+                loss.backward()   # accumulate gradient
 
             total_loss += float(loss)
-            outputs.append(output.detach())
+
+        if training:  # post gradient accumulation
+            if self.grad_clip > 0:
+                grad = clip_grad_norm_(self.model.parameters(), self.grad_clip)
+            self.optimizer.step()  # SGD step
+            self.training_steps += 1
 
         outputs = torch.cat(outputs, dim=0)
         return outputs, total_loss, grad
