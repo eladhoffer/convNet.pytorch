@@ -15,6 +15,7 @@ from utils.log import setup_logging, ResultsLog, save_checkpoint
 from utils.optim import OptimRegime
 from utils.cross_entropy import CrossEntropyLoss
 from utils.misc import torch_dtypes
+from utils.param_filter import FilterModules, is_bn
 from datetime import datetime
 from ast import literal_eval
 from trainer import Trainer
@@ -180,6 +181,10 @@ def main():
     criterion.to(args.device, dtype)
     model.to(args.device, dtype)
 
+    # Batch-norm should always be done in float
+    if 'half' in args.dtype:
+        FilterModules(model, module=is_bn).to(dtype=torch.float)
+
     # optimizer configuration
     optim_regime = getattr(model, 'regime', [{'epoch': 0,
                                               'optimizer': args.optimizer,
@@ -187,7 +192,8 @@ def main():
                                               'momentum': args.momentum,
                                               'weight_decay': args.weight_decay}])
 
-    optimizer = OptimRegime(model, optim_regime)
+    optimizer = optim_regime if isinstance(optim_regime, OptimRegime) \
+        else OptimRegime(model, optim_regime, use_float_copy='half' in args.dtype)
 
     trainer = Trainer(model, criterion, optimizer,
                       device_ids=args.device_ids, device=args.device, dtype=dtype,
