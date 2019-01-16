@@ -63,8 +63,8 @@ parser.add_argument('-j', '--workers', default=8, type=int, metavar='N',
                     help='number of data loading workers (default: 8)')
 parser.add_argument('--epochs', default=90, type=int, metavar='N',
                     help='number of total epochs to run')
-parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
-                    help='manual epoch number (useful on restarts)')
+parser.add_argument('--start-epoch', default=-1, type=int, metavar='N',
+                    help='manual epoch number (useful on restarts). -1 for unset (will start at 0)')
 parser.add_argument('-b', '--batch-size', default=256, type=int,
                     metavar='N', help='mini-batch size (default: 256)')
 parser.add_argument('--eval-batch-size', default=-1, type=int,
@@ -165,7 +165,8 @@ def main():
         if os.path.isfile(checkpoint_file):
             logging.info("loading checkpoint '%s'", args.resume)
             checkpoint = torch.load(checkpoint_file)
-            args.start_epoch = checkpoint['epoch'] - 1
+            if args.start_epoch < 0:  # not explicitly set
+                args.start_epoch = checkpoint['epoch'] - 1
             best_prec1 = checkpoint['best_prec1']
             model.load_state_dict(checkpoint['state_dict'])
             logging.info("loaded checkpoint '%s' (epoch %s)",
@@ -221,6 +222,7 @@ def main():
                                       'cutout': {'holes': 1, 'length': 16} if args.cutout else None})
 
     logging.info('optimization regime: %s', optim_regime)
+    args.start_epoch = max(args.start_epoch, 0)
     trainer.training_steps = args.start_epoch * len(train_data)
     for epoch in range(args.start_epoch, args.epochs):
         trainer.epoch = epoch
