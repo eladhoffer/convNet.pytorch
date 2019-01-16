@@ -3,6 +3,8 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 import math
 from .modules.se import SEBlock
+from .modules.checkpoint import CheckpointModule
+
 __all__ = ['resnet', 'resnet_se']
 
 
@@ -169,7 +171,7 @@ class ResNet_imagenet(ResNet):
     def __init__(self, num_classes=1000, inplanes=64,
                  block=Bottleneck, residual_block=None, layers=[3, 4, 23, 3],
                  width=[64, 128, 256, 512], expansion=4, groups=[1, 1, 1, 1],
-                 regime='normal', scale_lr=1):
+                 regime='normal', scale_lr=1, checkpoint_segments=0):
         super(ResNet_imagenet, self).__init__()
         self.inplanes = inplanes
         self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3,
@@ -179,9 +181,12 @@ class ResNet_imagenet(ResNet):
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 
         for i in range(len(layers)):
-            setattr(self, 'layer%s' % str(i + 1),
-                    self._make_layer(block=block, planes=width[i], blocks=layers[i], expansion=expansion,
-                                     stride=1 if i == 0 else 2, residual_block=residual_block, groups=groups[i]))
+            layer = self._make_layer(block=block, planes=width[i], blocks=layers[i], expansion=expansion,
+                                     stride=1 if i == 0 else 2, residual_block=residual_block, groups=groups[i])
+            if checkpoint_segments > 0:
+                layer_checkpoint_segments = min(checkpoint_segments, layers[i])
+                layer = CheckpointModule(layer, layer_checkpoint_segments)
+            setattr(self, 'layer%s' % str(i + 1), layer)
 
         self.avgpool = nn.AdaptiveAvgPool2d(1)
         self.fc = nn.Linear(width[-1] * expansion, num_classes)
@@ -300,7 +305,9 @@ def resnet(**config):
             config.update(dict(block=Bottleneck, layers=[3, 4, 23, 3]))
         if depth == 152:
             config.update(dict(block=Bottleneck, layers=[3, 8, 36, 3]))
-
+        if depth == 200:
+            config.update(dict(block=Bottleneck, layers=[3, 24, 36, 3]))
+            
         return ResNet_imagenet(**config)
 
     elif dataset == 'cifar10':
