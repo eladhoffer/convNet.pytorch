@@ -74,6 +74,9 @@ class DataRegime(object):
         return {'data': data_setting, 'loader': loader_setting,
                 'transform': transform_setting, 'other': other_setting}
 
+    def get(self, key, default=None):
+        return self.regime.setting.get(key, default)
+
     def get_loader(self, force_update=False):
         if force_update or self.regime.update(self.epoch, self.steps):
             setting = self.get_setting()

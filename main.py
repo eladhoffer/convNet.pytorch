@@ -232,7 +232,7 @@ def main():
 
         # train for one epoch
         train_results = trainer.train(train_data.get_loader(),
-                                      duplicates=args.duplicates,
+                                      duplicates=train_data.get('duplicates'),
                                       chunk_batch=args.chunk_batch)
 
         # evaluate on validation set
