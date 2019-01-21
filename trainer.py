@@ -46,6 +46,8 @@ class Trainer(object):
                                   target_batch.chunk(chunk_batch, dim=0)):
             target = target.to(self.device)
             inputs = inputs.to(self.device, dtype=self.dtype)
+            if training:
+                self.optimizer.pre_forward()
 
             # compute output
             output = self.model(inputs)
@@ -61,6 +63,7 @@ class Trainer(object):
             outputs.append(output.detach())
 
             if training:
+                self.optimizer.pre_backward()
                 loss.backward()   # accumulate gradient
 
             total_loss += float(loss)
