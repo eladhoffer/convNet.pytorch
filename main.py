@@ -109,21 +109,30 @@ def main():
     if args.save is '':
         args.save = time_stamp
     save_path = os.path.join(args.results_dir, args.save)
-    if not os.path.exists(save_path):
-        os.makedirs(save_path)
 
     args.distributed = args.local_rank >= 0 or args.world_size > 1
+
+    if args.distributed:
+        dist.init_process_group(backend=args.dist_backend, init_method=args.dist_init,
+                                world_size=args.world_size, rank=args.local_rank)
+        args.local_rank = dist.get_rank()
+        args.world_size = dist.get_world_size()
+        if args.dist_backend == 'mpi':
+            # If using MPI, select all visible devices
+            args.device_ids = list(range(torch.cuda.device_count()))
+        else:
+            args.device_ids = [args.local_rank]
+
+    if not os.path.exists(save_path) and not (args.distributed and args.local_rank > 0):
+        os.makedirs(save_path)
+
     setup_logging(os.path.join(save_path, 'log.txt'),
                   resume=args.resume is not '',
                   dummy=args.distributed and args.local_rank > 0)
+
     results_path = os.path.join(save_path, 'results')
     results = ResultsLog(
         results_path, title='Training Results - %s' % args.save)
-
-    if args.distributed:
-        args.device_ids = [args.local_rank]
-        dist.init_process_group(backend=args.dist_backend, init_method=args.dist_init,
-                                world_size=args.world_size, rank=args.local_rank)
 
     logging.info("saving to %s", save_path)
     logging.debug("run arguments: %s", args)

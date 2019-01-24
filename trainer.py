@@ -10,7 +10,7 @@ from utils.meters import AverageMeter, accuracy
 class Trainer(object):
 
     def __init__(self, model, criterion, optimizer=None,
-                 device_ids=0, device=torch.cuda, dtype=torch.float,
+                 device_ids=[0], device=torch.cuda, dtype=torch.float,
                  distributed=False, local_rank=-1,
                  grad_clip=-1, print_freq=100):
         self._model = model
@@ -26,9 +26,8 @@ class Trainer(object):
 
         if distributed:
             self.model = nn.parallel.DistributedDataParallel(model,
-                                                             device_ids=[
-                                                                 local_rank],
-                                                             output_device=local_rank)
+                                                             device_ids=device_ids,
+                                                             output_device=device_ids[0])
         elif device_ids and len(device_ids) > 1:
             self.model = nn.DataParallel(model, device_ids)
         else:
