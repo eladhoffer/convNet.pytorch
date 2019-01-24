@@ -100,7 +100,7 @@ def get_transform(transform_name='imagenet', input_size=None,
                   scale_size=None, normalize=None, augment=True, cutout=None, duplicates=1, num_crops=1):
     normalize = normalize or _IMAGENET_STATS
     transform_fn = None
-    if transform_name == 'imagenet':  # inception augmentation is default for imagenet
+    if 'imagenet' in transform_name:  # inception augmentation is default for imagenet
         scale_size = scale_size or 256
         input_size = input_size or 224
         if augment:

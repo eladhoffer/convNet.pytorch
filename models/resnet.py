@@ -288,7 +288,7 @@ def resnet(**config):
         if bn_norm == 'TopK':
             torch.nn.BatchNorm2d = TopkBatchNorm2d
 
-    if dataset == 'imagenet':
+    if 'imagenet' in dataset:
         config.setdefault('num_classes', 1000)
         depth = config.pop('depth', 50)
         if depth == 18:

@@ -4,6 +4,7 @@ import torchvision.datasets as datasets
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.sampler import RandomSampler
 from utils.regime import Regime
+from utils.dataset import IndexedFileDataset
 from preprocess import get_transform
 
 
@@ -43,7 +44,15 @@ def get_dataset(name, split='train', transform=None,
         return datasets.ImageFolder(root=root,
                                     transform=transform,
                                     target_transform=target_transform)
-
+    elif name == 'imagenet_tar':
+        if train:
+            root = os.path.join(root, 'imagenet_train.tar')
+        else:
+            root = os.path.join(root, 'imagenet_validation.tar')
+        return IndexedFileDataset(root, extract_target_fn=(
+            lambda fname: fname.split('/')[0]),
+            transform=transform,
+            target_transform=target_transform)
 
 _DATA_ARGS = {'name', 'split', 'transform',
               'target_transform', 'download', 'datasets_path'}
