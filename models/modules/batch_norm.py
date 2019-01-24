@@ -47,8 +47,9 @@ class MeanBatchNorm2d(nn.BatchNorm2d):
         nn.Module.__init__(self)
         self.register_buffer('running_mean', torch.zeros(num_features))
         self.momentum = momentum
+        self.num_features = num_features
         if bias:
-            self.bias = nn.Parameter(torch.Tensor(num_features))
+            self.bias = nn.Parameter(torch.zeros(num_features))
         else:
             self.register_parameter('bias', None)
 
@@ -58,11 +59,15 @@ class MeanBatchNorm2d(nn.BatchNorm2d):
         if self.training:
             numel = x.size(0) * x.size(2) * x.size(3)
             mean = x.sum((0, 2, 3)) / numel
-            self.running_mean.mul_(self.momentum).add_(
-                mean.detach() * (1 - self.momentum))
+            with torch.no_grad():
+                self.running_mean.mul_(self.momentum)\
+                    .add_(1 - self.momentum, mean)
         else:
             mean = self.running_mean
-        out = x - mean.view(1, -1, 1, 1)
         if self.bias is not None:
-            out = out + self.bias.view(1, -1, 1, 1)
-        return out
+            mean = mean - self.bias
+        return x - mean.view(1, -1, 1, 1)
+
+    def extra_repr(self):
+        return '{num_features}, momentum={momentum}, bias={has_bias}'.format(
+            has_bias=self.bias is not None, **self.__dict__)
