@@ -33,7 +33,7 @@ This code can be used to implement several recent papers:
     ```
     python main.py --model resnet --model-config "{'depth': 18, 'quantize':True}" --save resnet18_8bit -b 64
     ```
-  - [Augment your batch: better training with larger batches](https://openreview.net/forum?id=H1V4QhAqYQ&noteId=BylUSs_3Y7)
+  - [Hoffer et al. (2019): Augment your batch: better training with larger batches](https://arxiv.org/abs/1901.09335)
     
     For example, training the resnet44 + cutout example in paper:
     ```
@@ -110,5 +110,13 @@ If you use the code in your paper, consider citing one of the implemented works.
   author={Banner, Ron and Hubara, Itay and Hoffer, Elad and Soudry, Daniel},
   booktitle={Advances in Neural Information Processing Systems},
   year={2018}
+}
+```
+```
+@article{hoffer2019augment,
+  title={Augment your batch: better training with larger batches},
+  author={Hoffer, Elad and Ben-Nun, Tal and Hubara, Itay and Giladi, Niv and Hoefler, Torsten and Soudry, Daniel},
+  journal={arXiv preprint arXiv:1901.09335},
+  year={2019}
 }
 ```
