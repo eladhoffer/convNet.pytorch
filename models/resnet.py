@@ -46,6 +46,7 @@ class BasicBlock(nn.Module):
     def __init__(self, inplanes, planes,  stride=1, expansion=1,
                  downsample=None, groups=1, residual_block=None, dropout=0.):
         super(BasicBlock, self).__init__()
+        dropout = 0 if dropout is None else dropout
         self.conv1 = conv3x3(inplanes, planes, stride, groups=groups)
         self.bn1 = nn.BatchNorm2d(planes)
         self.relu = nn.ReLU(inplace=True)
@@ -84,6 +85,7 @@ class Bottleneck(nn.Module):
 
     def __init__(self, inplanes, planes,  stride=1, expansion=4, downsample=None, groups=1, residual_block=None, dropout=0.):
         super(Bottleneck, self).__init__()
+        dropout = 0 if dropout is None else dropout
         self.conv1 = nn.Conv2d(
             inplanes, planes, kernel_size=1, bias=False)
         self.bn1 = nn.BatchNorm2d(planes)
