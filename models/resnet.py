@@ -43,7 +43,8 @@ def weight_decay_config(value=1e-4, log=False):
 
 class BasicBlock(nn.Module):
 
-    def __init__(self, inplanes, planes,  stride=1, expansion=1, downsample=None, groups=1, residual_block=None):
+    def __init__(self, inplanes, planes,  stride=1, expansion=1,
+                 downsample=None, groups=1, residual_block=None, dropout=0.):
         super(BasicBlock, self).__init__()
         self.conv1 = conv3x3(inplanes, planes, stride, groups=groups)
         self.bn1 = nn.BatchNorm2d(planes)
@@ -54,11 +55,13 @@ class BasicBlock(nn.Module):
         self.residual_block = residual_block
         self.stride = stride
         self.expansion = expansion
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
         residual = x
 
         out = self.conv1(x)
+        out = self.dropout(out)
         out = self.bn1(out)
         out = self.relu(out)
 
@@ -79,7 +82,7 @@ class BasicBlock(nn.Module):
 
 class Bottleneck(nn.Module):
 
-    def __init__(self, inplanes, planes,  stride=1, expansion=4, downsample=None, groups=1, residual_block=None):
+    def __init__(self, inplanes, planes,  stride=1, expansion=4, downsample=None, groups=1, residual_block=None, dropout=0.):
         super(Bottleneck, self).__init__()
         self.conv1 = nn.Conv2d(
             inplanes, planes, kernel_size=1, bias=False)
@@ -90,6 +93,7 @@ class Bottleneck(nn.Module):
             planes, planes * expansion, kernel_size=1, bias=False)
         self.bn3 = nn.BatchNorm2d(planes * expansion)
         self.relu = nn.ReLU(inplace=True)
+        self.dropout = nn.Dropout(dropout)
         self.downsample = downsample
         self.residual_block = residual_block
         self.stride = stride
@@ -98,9 +102,11 @@ class Bottleneck(nn.Module):
     def forward(self, x):
         residual = x
         out = self.conv1(x)
+        out = self.dropout(out)
         out = self.bn1(out)
         out = self.relu(out)
         out = self.conv2(out)
+        out = self.dropout(out)
         out = self.bn2(out)
         out = self.relu(out)
 
@@ -124,7 +130,7 @@ class ResNet(nn.Module):
     def __init__(self):
         super(ResNet, self).__init__()
 
-    def _make_layer(self, block, planes, blocks, expansion=1, stride=1, groups=1, residual_block=None):
+    def _make_layer(self, block, planes, blocks, expansion=1, stride=1, groups=1, residual_block=None, dropout=None):
         downsample = None
         out_planes = planes * expansion
         if stride != 1 or self.inplanes != out_planes:
@@ -138,11 +144,11 @@ class ResNet(nn.Module):
 
         layers = []
         layers.append(block(self.inplanes, planes, stride, expansion=expansion,
-                            downsample=downsample, groups=groups, residual_block=residual_block))
+                            downsample=downsample, groups=groups, residual_block=residual_block, dropout=dropout))
         self.inplanes = planes * expansion
         for i in range(1, blocks):
             layers.append(block(self.inplanes, planes, expansion=expansion, groups=groups,
-                                residual_block=residual_block))
+                                residual_block=residual_block, dropout=dropout))
 
         return nn.Sequential(*layers)
 
@@ -243,7 +249,7 @@ class ResNet_cifar(ResNet):
 
     def __init__(self, num_classes=10, inplanes=16,
                  block=BasicBlock, depth=18, width=[16, 32, 64],
-                 groups=[1, 1, 1], residual_block=None):
+                 groups=[1, 1, 1], residual_block=None, regime='normal', dropout=None):
         super(ResNet_cifar, self).__init__()
         self.inplanes = inplanes
         n = int((depth - 2) / 6)
@@ -252,24 +258,34 @@ class ResNet_cifar(ResNet):
         self.bn1 = nn.BatchNorm2d(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = lambda x: x
+
         self.layer1 = self._make_layer(block, width[0], n, groups=groups[
-                                       0], residual_block=residual_block)
+                                       0], residual_block=residual_block, dropout=dropout)
         self.layer2 = self._make_layer(
-            block, width[1], n, stride=2, groups=groups[1], residual_block=residual_block)
+            block, width[1], n, stride=2, groups=groups[1], residual_block=residual_block, dropout=dropout)
         self.layer3 = self._make_layer(
-            block, width[2], n, stride=2, groups=groups[2], residual_block=residual_block)
+            block, width[2], n, stride=2, groups=groups[2], residual_block=residual_block, dropout=dropout)
         self.layer4 = lambda x: x
         self.avgpool = nn.AvgPool2d(8)
         self.fc = nn.Linear(width[-1], num_classes)
 
         init_model(self)
-        self.regime = [
-            {'epoch': 0, 'optimizer': 'SGD', 'lr': 1e-1, 'momentum': 0.9,
-             'regularizer': weight_decay_config(1e-4)},
-            {'epoch': 81, 'lr': 1e-2},
-            {'epoch': 122, 'lr': 1e-3},
-            {'epoch': 164, 'lr': 1e-4}
-        ]
+        if regime == 'normal':
+            self.regime = [
+                {'epoch': 0, 'optimizer': 'SGD', 'lr': 1e-1, 'momentum': 0.9,
+                 'regularizer': weight_decay_config(1e-4)},
+                {'epoch': 81, 'lr': 1e-2},
+                {'epoch': 122, 'lr': 1e-3},
+                {'epoch': 164, 'lr': 1e-4}
+            ]
+        elif regime == 'wide-resnet':
+            self.regime = [
+                {'epoch': 0, 'optimizer': 'SGD', 'lr': 1e-1, 'momentum': 0.9,
+                 'regularizer': weight_decay_config(5e-4)},
+                {'epoch': 60, 'lr': 2e-2},
+                {'epoch': 120, 'lr': 4e-3},
+                {'epoch': 160, 'lr': 8e-4}
+            ]
 
 
 def resnet(**config):
@@ -307,7 +323,7 @@ def resnet(**config):
             config.update(dict(block=Bottleneck, layers=[3, 8, 36, 3]))
         if depth == 200:
             config.update(dict(block=Bottleneck, layers=[3, 24, 36, 3]))
-            
+
         return ResNet_imagenet(**config)
 
     elif dataset == 'cifar10':
