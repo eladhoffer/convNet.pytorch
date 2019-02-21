@@ -89,6 +89,8 @@ parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
                     metavar='W', help='weight decay (default: 1e-4)')
 parser.add_argument('--print-freq', '-p', default=10, type=int,
                     metavar='N', help='print frequency (default: 10)')
+parser.add_argument('--adapt-grad-norm', default=None, type=int,
+                    help='adapt gradient scale frequency (default: None)')
 parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')
 parser.add_argument('-e', '--evaluate', type=str, metavar='FILE',
@@ -208,7 +210,7 @@ def main():
     trainer = Trainer(model, criterion, optimizer,
                       device_ids=args.device_ids, device=args.device, dtype=dtype,
                       distributed=args.distributed, local_rank=args.local_rank,
-                      grad_clip=args.grad_clip, print_freq=args.print_freq)
+                      grad_clip=args.grad_clip, print_freq=args.print_freq, adapt_grad_norm=args.adapt_grad_norm)
 
     # Evaluation Data loading code
     args.eval_batch_size = args.eval_batch_size if args.eval_batch_size > 0 else args.batch_size

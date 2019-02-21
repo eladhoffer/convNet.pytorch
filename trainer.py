@@ -7,11 +7,21 @@ from torch.nn.utils import clip_grad_norm_
 from utils.meters import AverageMeter, accuracy
 
 
+def _flatten_duplicates(inputs, target, batch_first=True):
+    if batch_first:
+        target = target.view(-1, 1).expand(-1, inputs.size(1))
+    else:
+        target = target.view(1, -1).expand(inputs.size(0), -1)
+    inputs = inputs.flatten(0, 1)
+    target = target.flatten(0, 1)
+    return inputs, target
+
+
 class Trainer(object):
 
     def __init__(self, model, criterion, optimizer=None,
                  device_ids=[0], device=torch.cuda, dtype=torch.float,
-                 distributed=False, local_rank=-1,
+                 distributed=False, local_rank=-1, adapt_grad_norm=None,
                  grad_clip=-1, print_freq=100):
         self._model = model
         self.criterion = criterion
@@ -23,6 +33,8 @@ class Trainer(object):
         self.local_rank = local_rank
         self.print_freq = print_freq
         self.grad_clip = grad_clip
+        self.grad_scale = None
+        self.adapt_grad_norm = adapt_grad_norm
 
         if distributed:
             self.model = nn.parallel.DistributedDataParallel(model,
@@ -32,6 +44,24 @@ class Trainer(object):
             self.model = nn.DataParallel(model, device_ids)
         else:
             self.model = model
+
+    def _grad_norm(self, inputs_batch, target_batch, chunk_batch=1):
+        self.model.zero_grad()
+        for inputs, target in zip(inputs_batch.chunk(chunk_batch, dim=0),
+                                  target_batch.chunk(chunk_batch, dim=0)):
+            target = target.to(self.device)
+            inputs = inputs.to(self.device, dtype=self.dtype)
+
+            # compute output
+            output = self.model(inputs)
+            loss = self.criterion(output, target)
+
+            if chunk_batch > 1:
+                loss = loss / chunk_batch
+
+            loss.backward()   # accumulate gradient
+        grad = clip_grad_norm_(self.model.parameters(), float('inf'))
+        return grad
 
     def _step(self, inputs_batch, target_batch, training=False, chunk_batch=1):
         outputs = []
@@ -63,6 +93,8 @@ class Trainer(object):
 
             if training:
                 self.optimizer.pre_backward()
+                if self.grad_scale is not None:
+                    loss = loss * self.grad_scale
                 loss.backward()   # accumulate gradient
 
             total_loss += float(loss)
@@ -91,12 +123,22 @@ class Trainer(object):
         end = time.time()
 
         for i, (inputs, target) in enumerate(data_loader):
+            if training and duplicates > 1 and self.adapt_grad_norm is not None \
+                    and i % self.adapt_grad_norm == 0:
+                grad_mean = 0
+                num = inputs.size(1)
+                for j in range(num):
+                    grad_mean += float(self._grad_norm(inputs.select(1, j), target))
+                grad_mean /= num
+                grad_all = float(self._grad_norm(
+                    *_flatten_duplicates(inputs, target)))
+                self.grad_scale = grad_mean / grad_all
+                logging.info('New loss scale: %s', self.grad_scale)
+
             # measure data loading time
             meters['data'].update(time.time() - end)
             if duplicates > 1:  # multiple versions for each sample (dim 1)
-                target = target.view(-1, 1).expand(-1, inputs.size(1))
-                inputs = inputs.flatten(0, 1)
-                target = target.flatten(0, 1)
+                inputs, target = _flatten_duplicates(inputs, target)
 
             output, loss, grad = self._step(inputs, target,
                                             training=training,
