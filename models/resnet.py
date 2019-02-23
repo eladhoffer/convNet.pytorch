@@ -62,9 +62,9 @@ class BasicBlock(nn.Module):
         residual = x
 
         out = self.conv1(x)
-        out = self.dropout(out)
         out = self.bn1(out)
         out = self.relu(out)
+        out = self.dropout(out)
 
         out = self.conv2(out)
         out = self.bn2(out)
@@ -104,13 +104,14 @@ class Bottleneck(nn.Module):
     def forward(self, x):
         residual = x
         out = self.conv1(x)
-        out = self.dropout(out)
         out = self.bn1(out)
         out = self.relu(out)
-        out = self.conv2(out)
         out = self.dropout(out)
+
+        out = self.conv2(out)
         out = self.bn2(out)
         out = self.relu(out)
+        out = self.dropout(out)
 
         out = self.conv3(out)
         out = self.bn3(out)
