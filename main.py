@@ -73,12 +73,16 @@ parser.add_argument('--optimizer', default='SGD', type=str, metavar='OPT',
                     help='optimizer function used')
 parser.add_argument('--label-smoothing', default=0, type=float,
                     help='label smoothing coefficient - default 0')
+parser.add_argument('--mixup', default=None, type=float,
+                    help='mixup alpha coefficient - default None')
 parser.add_argument('--duplicates', default=1, type=int,
                     help='number of augmentations over singel example')
 parser.add_argument('--chunk-batch', default=1, type=int,
                     help='chunk batch size for multiple passes (training)')
 parser.add_argument('--cutout', action='store_true', default=False,
                     help='cutout augmentations')
+parser.add_argument('--autoaugment', action='store_true', default=False,
+                    help='use autoaugment policies')
 parser.add_argument('--grad-clip', default=-1, type=float,
                     help='maximum grad norm value, -1 for none')
 parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
@@ -209,7 +213,7 @@ def main():
 
     trainer = Trainer(model, criterion, optimizer,
                       device_ids=args.device_ids, device=args.device, dtype=dtype,
-                      distributed=args.distributed, local_rank=args.local_rank,
+                      distributed=args.distributed, local_rank=args.local_rank, mixup=args.mixup,
                       grad_clip=args.grad_clip, print_freq=args.print_freq, adapt_grad_norm=args.adapt_grad_norm)
 
     # Evaluation Data loading code
@@ -229,7 +233,7 @@ def main():
                             defaults={'datasets_path': args.datasets_dir, 'name': args.dataset, 'split': 'train', 'augment': True,
                                       'input_size': args.input_size,  'batch_size': args.batch_size, 'shuffle': True,
                                       'num_workers': args.workers, 'pin_memory': True, 'drop_last': True,
-                                      'distributed': args.distributed, 'duplicates': args.duplicates,
+                                      'distributed': args.distributed, 'duplicates': args.duplicates, 'autoaugment': args.duplicates,
                                       'cutout': {'holes': 1, 'length': 16} if args.cutout else None})
 
     logging.info('optimization regime: %s', optim_regime)

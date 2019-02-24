@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import torchvision.transforms as transforms
 import random
+from autoaugment import ImageNetPolicy, CIFAR10Policy
 
 _IMAGENET_STATS = {'mean': [0.485, 0.456, 0.406],
                    'std': [0.229, 0.224, 0.225]}
@@ -62,6 +63,17 @@ def pad_random_crop(input_size, scale_size=None, normalize=_IMAGENET_STATS):
     ])
 
 
+def cifar_autoaugment(input_size, scale_size=None, normalize=_IMAGENET_STATS):
+    padding = int((scale_size - input_size) / 2)
+    return transforms.Compose([
+        transforms.RandomCrop(input_size, padding=padding),
+        transforms.RandomHorizontalFlip(),
+        CIFAR10Policy(fillcolor=(128, 128, 128)),
+        transforms.ToTensor(),
+        transforms.Normalize(**normalize),
+    ])
+
+
 def inception_preproccess(input_size, normalize=_IMAGENET_STATS):
     return transforms.Compose([
         transforms.RandomResizedCrop(input_size),
@@ -96,8 +108,9 @@ def multi_transform(transform_fn, duplicates=1, dim=0):
         return transform_fn
 
 
-def get_transform(transform_name='imagenet', input_size=None,
-                  scale_size=None, normalize=None, augment=True, cutout=None, duplicates=1, num_crops=1):
+def get_transform(transform_name='imagenet', input_size=None, scale_size=None,
+                  normalize=None, augment=True, cutout=None, autoaugment=False,
+                  duplicates=1, num_crops=1):
     normalize = normalize or _IMAGENET_STATS
     transform_fn = None
     if 'imagenet' in transform_name:  # inception augmentation is default for imagenet
@@ -113,8 +126,12 @@ def get_transform(transform_name='imagenet', input_size=None,
         input_size = input_size or 32
         if augment:
             scale_size = scale_size or 40
-            transform_fn = pad_random_crop(input_size, scale_size=scale_size,
-                                           normalize=normalize)
+            if autoaugment:
+                transform_fn = cifar_autoaugment(input_size, scale_size=scale_size,
+                                                 normalize=normalize)
+            else:
+                transform_fn = pad_random_crop(input_size, scale_size=scale_size,
+                                               normalize=normalize)
         else:
             scale_size = scale_size or 32
             transform_fn = scale_crop(input_size=input_size, scale_size=scale_size,

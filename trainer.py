@@ -5,6 +5,8 @@ import torch.nn as nn
 import torch.nn.parallel
 from torch.nn.utils import clip_grad_norm_
 from utils.meters import AverageMeter, accuracy
+from utils.mixup import MixUp
+from random import sample
 
 
 def _flatten_duplicates(inputs, target, batch_first=True):
@@ -17,12 +19,22 @@ def _flatten_duplicates(inputs, target, batch_first=True):
     return inputs, target
 
 
+def _mixup(mixup_modules, alpha, batch_size):
+    mixup_layer = None
+    if len(mixup_modules) > 0:
+        for m in mixup_modules:
+            m.reset()
+        mixup_layer = sample(mixup_modules, 1)[0]
+        mixup_layer.sample(alpha, batch_size)
+    return mixup_layer
+
+
 class Trainer(object):
 
     def __init__(self, model, criterion, optimizer=None,
                  device_ids=[0], device=torch.cuda, dtype=torch.float,
                  distributed=False, local_rank=-1, adapt_grad_norm=None,
-                 grad_clip=-1, print_freq=100):
+                 mixup=None, grad_clip=-1, print_freq=100):
         self._model = model
         self.criterion = criterion
         self.epoch = 0
@@ -33,6 +45,7 @@ class Trainer(object):
         self.local_rank = local_rank
         self.print_freq = print_freq
         self.grad_clip = grad_clip
+        self.mixup = mixup
         self.grad_scale = None
         self.adapt_grad_norm = adapt_grad_norm
 
@@ -75,11 +88,22 @@ class Trainer(object):
                                   target_batch.chunk(chunk_batch, dim=0)):
             target = target.to(self.device)
             inputs = inputs.to(self.device, dtype=self.dtype)
+
+            mixup = None
             if training:
                 self.optimizer.pre_forward()
+                if self.mixup is not None:
+                    input_mixup = MixUp()
+                    mixup_modules = [input_mixup]  # input mixup
+                    # mixup_modules += [m for m in self.model.modules()
+                                    #   if isinstance(m, MixUp)]
+                    mixup = _mixup(mixup_modules, self.mixup, inputs.size(0))
+                    inputs = input_mixup(inputs)
 
             # compute output
             output = self.model(inputs)
+            if mixup is not None:
+                target = mixup.mix_target(target, output.size(-1))
             loss = self.criterion(output, target)
             grad = None
 
