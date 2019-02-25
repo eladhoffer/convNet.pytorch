@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from collections import OrderedDict
+from .modules.checkpoint import CheckpointModule
 
 __all__ = ['densenet']
 
@@ -84,7 +85,7 @@ class DenseNet(nn.Module):
         ]))
 
     def __init__(self, growth_rate=32, block_config=(6, 12, 24, 16),
-                 num_init_features=64, bn_size=4, drop_rate=0, num_classes=1000):
+                 num_init_features=64, bn_size=4, drop_rate=0, num_classes=1000, checkpoint_segments=0):
 
         super(DenseNet, self).__init__()
 
@@ -105,7 +106,9 @@ class DenseNet(nn.Module):
 
         # Final batch norm
         self.features.add_module('norm5', nn.BatchNorm2d(num_features))
-
+        if checkpoint_segments > 0:
+            self.features = CheckpointModule(
+                self.features, checkpoint_segments)
         # Linear layer
         self.classifier = nn.Linear(num_features, num_classes)
         init_model(self)
@@ -129,9 +132,9 @@ class DenseNet(nn.Module):
 
 class DenseNet_imagenet(DenseNet):
     def __init__(self, growth_rate=32, block_config=(6, 12, 24, 16),
-                 num_init_features=64, bn_size=4, drop_rate=0, num_classes=1000, regime='normal', scale_lr=1):
-        super(DenseNet_imagenet, self).__init__(growth_rate, block_config,
-                                             num_init_features, bn_size, drop_rate, num_classes)
+                 num_init_features=64, bn_size=4, drop_rate=0, num_classes=1000, regime='normal', scale_lr=1, **kwargs):
+        super(DenseNet_imagenet, self).__init__(growth_rate, block_config, num_init_features,
+                                                bn_size, drop_rate, num_classes, **kwargs)
 
         def ramp_up_lr(lr0, lrT, T):
             rate = (lrT - lr0) / T
