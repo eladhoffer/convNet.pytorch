@@ -95,8 +95,8 @@ class Trainer(object):
                 if self.mixup is not None:
                     input_mixup = MixUp()
                     mixup_modules = [input_mixup]  # input mixup
-                    # mixup_modules += [m for m in self.model.modules()
-                                    #   if isinstance(m, MixUp)]
+                    mixup_modules += [m for m in self.model.modules()
+                                      if isinstance(m, MixUp)]
                     mixup = _mixup(mixup_modules, self.mixup, inputs.size(0))
                     inputs = input_mixup(inputs)
 

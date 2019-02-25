@@ -4,6 +4,10 @@ import torchvision.transforms as transforms
 import math
 from .modules.se import SEBlock
 from .modules.checkpoint import CheckpointModule
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from utils.mixup import MixUp
 
 __all__ = ['resnet', 'resnet_se']
 
@@ -133,7 +137,7 @@ class ResNet(nn.Module):
     def __init__(self):
         super(ResNet, self).__init__()
 
-    def _make_layer(self, block, planes, blocks, expansion=1, stride=1, groups=1, residual_block=None, dropout=None):
+    def _make_layer(self, block, planes, blocks, expansion=1, stride=1, groups=1, residual_block=None, dropout=None, mixup=False):
         downsample = None
         out_planes = planes * expansion
         if stride != 1 or self.inplanes != out_planes:
@@ -152,7 +156,8 @@ class ResNet(nn.Module):
         for i in range(1, blocks):
             layers.append(block(self.inplanes, planes, expansion=expansion, groups=groups,
                                 residual_block=residual_block, dropout=dropout))
-
+        if mixup:
+            layers.append(MixUp())
         return nn.Sequential(*layers)
 
     def features(self, x):
@@ -180,7 +185,7 @@ class ResNet_imagenet(ResNet):
     def __init__(self, num_classes=1000, inplanes=64,
                  block=Bottleneck, residual_block=None, layers=[3, 4, 23, 3],
                  width=[64, 128, 256, 512], expansion=4, groups=[1, 1, 1, 1],
-                 regime='normal', scale_lr=1, checkpoint_segments=0):
+                 regime='normal', scale_lr=1, checkpoint_segments=0, mixup=False):
         super(ResNet_imagenet, self).__init__()
         self.inplanes = inplanes
         self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3,
@@ -191,7 +196,8 @@ class ResNet_imagenet(ResNet):
 
         for i in range(len(layers)):
             layer = self._make_layer(block=block, planes=width[i], blocks=layers[i], expansion=expansion,
-                                     stride=1 if i == 0 else 2, residual_block=residual_block, groups=groups[i])
+                                     stride=1 if i == 0 else 2, residual_block=residual_block, groups=groups[i],
+                                     mixup=mixup)
             if checkpoint_segments > 0:
                 layer_checkpoint_segments = min(checkpoint_segments, layers[i])
                 layer = CheckpointModule(layer, layer_checkpoint_segments)
@@ -252,7 +258,7 @@ class ResNet_cifar(ResNet):
 
     def __init__(self, num_classes=10, inplanes=16,
                  block=BasicBlock, depth=18, width=[16, 32, 64],
-                 groups=[1, 1, 1], residual_block=None, regime='normal', dropout=None):
+                 groups=[1, 1, 1], residual_block=None, regime='normal', dropout=None, mixup=False):
         super(ResNet_cifar, self).__init__()
         self.inplanes = inplanes
         n = int((depth - 2) / 6)
@@ -263,11 +269,11 @@ class ResNet_cifar(ResNet):
         self.maxpool = lambda x: x
 
         self.layer1 = self._make_layer(block, width[0], n, groups=groups[
-                                       0], residual_block=residual_block, dropout=dropout)
+                                       0], residual_block=residual_block, dropout=dropout, mixup=mixup)
         self.layer2 = self._make_layer(
-            block, width[1], n, stride=2, groups=groups[1], residual_block=residual_block, dropout=dropout)
+            block, width[1], n, stride=2, groups=groups[1], residual_block=residual_block, dropout=dropout, mixup=mixup)
         self.layer3 = self._make_layer(
-            block, width[2], n, stride=2, groups=groups[2], residual_block=residual_block, dropout=dropout)
+            block, width[2], n, stride=2, groups=groups[2], residual_block=residual_block, dropout=dropout, mixup=mixup)
         self.layer4 = lambda x: x
         self.avgpool = nn.AvgPool2d(8)
         self.fc = nn.Linear(width[-1], num_classes)
