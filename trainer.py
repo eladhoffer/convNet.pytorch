@@ -13,6 +13,7 @@ def _flatten_duplicates(inputs, target, batch_first=True):
     if batch_first:
         target = target.view(-1, 1).expand(-1, inputs.size(1))
     else:
+        inputs = inputs.transpose(0, 1)
         target = target.view(1, -1).expand(inputs.size(0), -1)
     inputs = inputs.flatten(0, 1)
     target = target.flatten(0, 1)
@@ -138,6 +139,10 @@ class Trainer(object):
         if training and self.grad_clip > 0:
             meters['grad'] = AverageMeter()
 
+        batch_first = True
+        if training and isinstance(self.model, nn.DataParallel) or chunk_batch > 1:
+            batch_first = False
+
         def meter_results(meters):
             results = {name: meter.avg for name, meter in meters.items()}
             results['error1'] = 100. - results['prec1']
@@ -155,14 +160,15 @@ class Trainer(object):
                     grad_mean += float(self._grad_norm(inputs.select(1, j), target))
                 grad_mean /= num
                 grad_all = float(self._grad_norm(
-                    *_flatten_duplicates(inputs, target)))
+                    *_flatten_duplicates(inputs, target, batch_first)))
                 self.grad_scale = grad_mean / grad_all
                 logging.info('New loss scale: %s', self.grad_scale)
 
             # measure data loading time
             meters['data'].update(time.time() - end)
             if duplicates > 1:  # multiple versions for each sample (dim 1)
-                inputs, target = _flatten_duplicates(inputs, target)
+                inputs, target = _flatten_duplicates(
+                    inputs, target, batch_first)
 
             output, loss, grad = self._step(inputs, target,
                                             training=training,
