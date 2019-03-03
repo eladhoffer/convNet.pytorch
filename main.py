@@ -233,7 +233,7 @@ def main():
                             defaults={'datasets_path': args.datasets_dir, 'name': args.dataset, 'split': 'train', 'augment': True,
                                       'input_size': args.input_size,  'batch_size': args.batch_size, 'shuffle': True,
                                       'num_workers': args.workers, 'pin_memory': True, 'drop_last': True,
-                                      'distributed': args.distributed, 'duplicates': args.duplicates, 'autoaugment': args.duplicates,
+                                      'distributed': args.distributed, 'duplicates': args.duplicates, 'autoaugment': args.autoaugment,
                                       'cutout': {'holes': 1, 'length': 16} if args.cutout else None})
 
     logging.info('optimization regime: %s', optim_regime)
