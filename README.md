@@ -2,6 +2,11 @@
 
 This is a complete training example for Deep Convolutional Networks on various datasets (ImageNet, Cifar10, Cifar100, MNIST).
 
+Available models include:
+```
+'alexnet', 'amoebanet', 'darts', 'densenet', 'googlenet', 'inception_resnet_v2', 'inception_v2', 'mnist', 'mobilenet', 'mobilenet_v2', 'nasnet', 'resnet', 'resnet_se', 'resnet_zi', 'resnet_zi_se', 'resnext', 'resnext_se'
+```
+
 It is based off [imagenet example in pytorch](https://github.com/pytorch/examples/tree/master/imagenet) with helpful additions such as:
   - Training on several datasets other than imagenet
   - Complete logging of trained experiment
