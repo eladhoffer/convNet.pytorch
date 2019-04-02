@@ -44,17 +44,25 @@ class ExpandedConv2d(nn.Module):
         super(ExpandedConv2d, self).__init__()
         self.add_res = stride == 1 and in_channels == out_channels
         self.residual_block = residual_block
-        self.block = nn.Sequential(
-            nn.Conv2d(in_channels, expanded, 1, bias=False),
-            nn.BatchNorm2d(expanded),
-            nn.ReLU6(inplace=True),
+        if expanded == in_channels:
+            block = []
+        else:
+            block = [
+                nn.Conv2d(in_channels, expanded, 1, bias=False),
+                nn.BatchNorm2d(expanded),
+                nn.ReLU6(inplace=True),
+            ]
+
+        block += [
             nn.Conv2d(expanded, expanded, kernel_size,
                       stride=stride, padding=padding, groups=expanded, bias=False),
             nn.BatchNorm2d(expanded),
             nn.ReLU6(inplace=True),
             nn.Conv2d(expanded, out_channels, 1, bias=False),
             nn.BatchNorm2d(out_channels)
-        )
+        ]
+
+        self.block = nn.Sequential(*block)
 
     def forward(self, x):
         out = self.block(x)
