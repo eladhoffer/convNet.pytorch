@@ -6,7 +6,8 @@ from torch.utils.data.sampler import RandomSampler
 from utils.regime import Regime
 from utils.dataset import IndexedFileDataset
 from preprocess import get_transform
-
+import warnings
+warnings.filterwarnings("ignore", "(Possibly )?corrupt EXIF data", UserWarning)
 
 def get_dataset(name, split='train', transform=None,
                 target_transform=None, download=True, datasets_path='~/Datasets'):
