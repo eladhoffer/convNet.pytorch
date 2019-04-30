@@ -85,6 +85,8 @@ parser.add_argument('--autoaugment', action='store_true', default=False,
                     help='use autoaugment policies')
 parser.add_argument('--grad-clip', default=-1, type=float,
                     help='maximum grad norm value, -1 for none')
+parser.add_argument('--loss-scale', default=1, type=float,
+                    help='loss scale for mixed precision training.')
 parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
                     metavar='LR', help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
@@ -213,7 +215,7 @@ def main():
 
     trainer = Trainer(model, criterion, optimizer,
                       device_ids=args.device_ids, device=args.device, dtype=dtype,
-                      distributed=args.distributed, local_rank=args.local_rank, mixup=args.mixup,
+                      distributed=args.distributed, local_rank=args.local_rank, mixup=args.mixup, loss_scale=args.loss_scale,
                       grad_clip=args.grad_clip, print_freq=args.print_freq, adapt_grad_norm=args.adapt_grad_norm)
 
     # Evaluation Data loading code

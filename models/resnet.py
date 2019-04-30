@@ -235,22 +235,25 @@ class ResNet_imagenet(ResNet):
                 {'epoch': 18, 'input_size': 224, 'batch_size': 64},
                 {'epoch': 41, 'input_size': 288, 'batch_size': 32},
             ]
-        elif regime == 'small':
-            scale_lr *= 4
+        elif 'small' in regime:
+            if regime == 'small_half':
+                bs_factor = 2
+            else:
+                bs_factor = 1
+            scale_lr *= 4 * bs_factor
             self.regime = [
                 {'epoch': 0, 'optimizer': 'SGD', 'regularizer': weight_decay_config(1e-4),
                  'momentum': 0.9, 'lr': scale_lr * 1e-1},
                 {'epoch': 30, 'lr': scale_lr * 1e-2},
                 {'epoch': 60, 'lr': scale_lr * 1e-3},
-                {'epoch': 80, 'lr': scale_lr * 1e-4}
+                {'epoch': 80, 'lr': bs_factor * 1e-4}
             ]
             self.data_regime = [
-                {'epoch': 0, 'input_size': 128, 'batch_size': 256},
-                {'epoch': 80, 'input_size': 224, 'batch_size': 64},
+                {'epoch': 0, 'input_size': 128, 'batch_size': 256 * bs_factor},
+                {'epoch': 80, 'input_size': 224, 'batch_size': 64 * bs_factor},
             ]
             self.data_eval_regime = [
-                {'epoch': 0, 'input_size': 128, 'batch_size': 1024},
-                {'epoch': 80, 'input_size': 224, 'batch_size': 512},
+                {'epoch': 0, 'input_size': 224, 'batch_size': 512 * bs_factor},
             ]
 
 

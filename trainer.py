@@ -35,7 +35,7 @@ class Trainer(object):
     def __init__(self, model, criterion, optimizer=None,
                  device_ids=[0], device=torch.cuda, dtype=torch.float,
                  distributed=False, local_rank=-1, adapt_grad_norm=None,
-                 mixup=None, grad_clip=-1, print_freq=100):
+                 mixup=None, loss_scale=1., grad_clip=-1, print_freq=100):
         self._model = model
         self.criterion = criterion
         self.epoch = 0
@@ -48,6 +48,7 @@ class Trainer(object):
         self.grad_clip = grad_clip
         self.mixup = mixup
         self.grad_scale = None
+        self.loss_scale = loss_scale
         self.adapt_grad_norm = adapt_grad_norm
 
         if distributed:
@@ -85,8 +86,8 @@ class Trainer(object):
             self.optimizer.zero_grad()
             self.optimizer.update(self.epoch, self.training_steps)
 
-        for inputs, target in zip(inputs_batch.chunk(chunk_batch, dim=0),
-                                  target_batch.chunk(chunk_batch, dim=0)):
+        for i, (inputs, target) in enumerate(zip(inputs_batch.chunk(chunk_batch, dim=0),
+                                                 target_batch.chunk(chunk_batch, dim=0))):
             target = target.to(self.device)
             inputs = inputs.to(self.device, dtype=self.dtype)
 
@@ -115,16 +116,24 @@ class Trainer(object):
                 output = output[0]
 
             outputs.append(output.detach())
-
-            if training:
-                self.optimizer.pre_backward()
-                if self.grad_scale is not None:
-                    loss = loss * self.grad_scale
-                loss.backward()   # accumulate gradient
-
             total_loss += float(loss)
 
+            if training:
+                if i == 0:
+                    self.optimizer.pre_backward()
+                if self.grad_scale is not None:
+                    loss = loss * self.grad_scale
+                if self.loss_scale is not None:
+                    loss = loss * self.loss_scale
+                loss.backward()   # accumulate gradient
+
         if training:  # post gradient accumulation
+            if self.loss_scale is not None:
+                for p in self.model.parameters():
+                    if p.grad is None:
+                        continue
+                    p.grad.data.div_(self.loss_scale)
+
             if self.grad_clip > 0:
                 grad = clip_grad_norm_(self.model.parameters(), self.grad_clip)
             self.optimizer.step()  # SGD step
