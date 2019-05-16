@@ -104,11 +104,13 @@ parser.add_argument('-e', '--evaluate', type=str, metavar='FILE',
 parser.add_argument('--seed', default=123, type=int,
                     help='random seed (default: 123)')
 
-
 def main():
-    global args, best_prec1, dtype
-    best_prec1 = 0
     args = parser.parse_args()
+    main_worker(args)
+
+def main_worker(args):
+    global best_prec1, dtype
+    best_prec1 = 0
     dtype = torch_dtypes.get(args.dtype)
     torch.manual_seed(args.seed)
     time_stamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
@@ -169,11 +171,17 @@ def main():
     if args.evaluate:
         if not os.path.isfile(args.evaluate):
             parser.error('invalid checkpoint: {}'.format(args.evaluate))
-        checkpoint = torch.load(args.evaluate)
+        checkpoint = torch.load(args.evaluate, map_location="cpu")
+        # Overrride configuration with checkpoint info
+        args.model = checkpoint.get('model', args.model)
+        args.model_config = checkpoint.get('config', args.model_config)
+        # load checkpoint
         model.load_state_dict(checkpoint['state_dict'])
         logging.info("loaded checkpoint '%s' (epoch %s)",
                      args.evaluate, checkpoint['epoch'])
-    elif args.resume:
+
+
+    if args.resume:
         checkpoint_file = args.resume
         if os.path.isdir(checkpoint_file):
             results.load(os.path.join(checkpoint_file, 'results.csv'))

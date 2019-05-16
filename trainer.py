@@ -9,15 +9,31 @@ from utils.mixup import MixUp
 from random import sample
 
 
-def _flatten_duplicates(inputs, target, batch_first=True):
-    if batch_first:
-        target = target.view(-1, 1).expand(-1, inputs.size(1))
-    else:
+def _flatten_duplicates(inputs, target, batch_first=True, expand_target=True):
+    duplicates = inputs.size(1)
+    if not batch_first:
         inputs = inputs.transpose(0, 1)
-        target = target.view(1, -1).expand(inputs.size(0), -1)
     inputs = inputs.flatten(0, 1)
-    target = target.flatten(0, 1)
+
+    if expand_target:
+        if batch_first:
+            target = target.view(-1, 1).expand(-1, duplicates)
+        else:
+            target = target.view(1, -1).expand(duplicates, -1)
+        target = target.flatten(0, 1)
     return inputs, target
+
+
+def _average_duplicates(outputs, target, batch_first=True):
+    """assumes target is not expanded (target.size(0) == batch_size) """
+    batch_size = target.size(0)
+    reduce_dim = 1 if batch_first else 0
+    if batch_first:
+        outputs = outputs.view(batch_size, -1, *outputs.shape[1:])
+    else:
+        outputs = outputs.view(-1, batch_size, *outputs.shape[1:])
+    outputs = outputs.mean(dim=reduce_dim)
+    return outputs
 
 
 def _mixup(mixup_modules, alpha, batch_size):
@@ -78,7 +94,7 @@ class Trainer(object):
         grad = clip_grad_norm_(self.model.parameters(), float('inf'))
         return grad
 
-    def _step(self, inputs_batch, target_batch, training=False, chunk_batch=1):
+    def _step(self, inputs_batch, target_batch, training=False, average_output=False, chunk_batch=1):
         outputs = []
         total_loss = 0
 
@@ -104,8 +120,16 @@ class Trainer(object):
 
             # compute output
             output = self.model(inputs)
+
             if mixup is not None:
                 target = mixup.mix_target(target, output.size(-1))
+
+            if average_output:
+                if isinstance(output, list) or isinstance(output, tuple):
+                    output = [_average_duplicates(out, target) if out is not None else None
+                              for out in output]
+                else:
+                    output = _average_duplicates(output, target)
             loss = self.criterion(output, target)
             grad = None
 
@@ -142,7 +166,8 @@ class Trainer(object):
         outputs = torch.cat(outputs, dim=0)
         return outputs, total_loss, grad
 
-    def forward(self, data_loader, num_steps=None, training=False, duplicates=1, chunk_batch=1):
+    def forward(self, data_loader, num_steps=None, training=False, duplicates=1, average_output=False, chunk_batch=1):
+
         meters = {name: AverageMeter()
                   for name in ['step', 'data', 'loss', 'prec1', 'prec5']}
         if training and self.grad_clip > 0:
@@ -151,6 +176,8 @@ class Trainer(object):
         batch_first = True
         if training and isinstance(self.model, nn.DataParallel) or chunk_batch > 1:
             batch_first = False
+        if average_output:
+            assert duplicates > 1 and batch_first, "duplicates must be > 1 for output averaging"
 
         def meter_results(meters):
             results = {name: meter.avg for name, meter in meters.items()}
@@ -176,11 +203,12 @@ class Trainer(object):
             # measure data loading time
             meters['data'].update(time.time() - end)
             if duplicates > 1:  # multiple versions for each sample (dim 1)
-                inputs, target = _flatten_duplicates(
-                    inputs, target, batch_first)
+                inputs, target = _flatten_duplicates(inputs, target, batch_first,
+                                                     expand_target=not average_output)
 
             output, loss, grad = self._step(inputs, target,
                                             training=training,
+                                            average_output=average_output,
                                             chunk_batch=chunk_batch)
 
             # measure accuracy and record loss
@@ -216,14 +244,14 @@ class Trainer(object):
 
         return meter_results(meters)
 
-    def train(self, data_loader, duplicates=1, chunk_batch=1):
+    def train(self, data_loader, duplicates=1, average_output=False, chunk_batch=1):
         # switch to train mode
         self.model.train()
 
-        return self.forward(data_loader, duplicates=duplicates, training=True, chunk_batch=chunk_batch)
+        return self.forward(data_loader, duplicates=duplicates, training=True, average_output=average_output, chunk_batch=chunk_batch)
 
-    def validate(self, data_loader, duplicates=1):
+    def validate(self, data_loader, average_output=False, duplicates=1):
         # switch to evaluate mode
         self.model.eval()
         with torch.no_grad():
-            return self.forward(data_loader, duplicates=duplicates, training=False)
+            return self.forward(data_loader, duplicates=duplicates, average_output=average_output, training=False)
