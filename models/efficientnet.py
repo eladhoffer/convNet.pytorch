@@ -65,7 +65,7 @@ def drop_connect(x, drop_prob):
 
 class MBConv(nn.Module):
     def __init__(self, in_channels, out_channels, expansion=1, kernel_size=3,
-                 stride=1, padding=1, se_ratio=4, hard_act=False):
+                 stride=1, padding=1, se_ratio=0.25, hard_act=False):
         expanded = in_channels * expansion
         super(MBConv, self).__init__()
         self.add_res = stride == 1 and in_channels == out_channels
@@ -74,7 +74,7 @@ class MBConv(nn.Module):
                       hard_act=hard_act) if expanded != in_channels else nn.Identity(),
             ConvBNAct(expanded, expanded, kernel_size,
                       stride=stride, padding=padding, groups=expanded, hard_act=hard_act),
-            SESwishBlock(expanded, ratio=se_ratio,
+            SESwishBlock(expanded, expanded, int(in_channels*se_ratio),
                          hard_act=hard_act) if se_ratio > 0 else nn.Identity(),
             nn.Conv2d(expanded, out_channels, 1, bias=False),
             nn.BatchNorm2d(out_channels)
@@ -92,7 +92,7 @@ class MBConv(nn.Module):
 
 class MBConvBlock(nn.Sequential):
     def __init__(self, in_channels, out_channels, num, expansion=1, kernel_size=3,
-                 stride=1, padding=1, se_ratio=4, hard_act=False):
+                 stride=1, padding=1, se_ratio=0.25, hard_act=False):
         kwargs = dict(expansion=expansion, kernel_size=kernel_size,
                       stride=stride, padding=padding, se_ratio=se_ratio, hard_act=hard_act)
         first_conv = MBConv(in_channels, out_channels, **kwargs)
@@ -104,7 +104,7 @@ class MBConvBlock(nn.Sequential):
 
 class EfficientNet(nn.Module):
 
-    def __init__(self, width_coeff=1, depth_coeff=1, resolution=224, se_ratio=4, regime=None, num_classes=1000,
+    def __init__(self, width_coeff=1, depth_coeff=1, resolution=224, se_ratio=0.25, regime=None, num_classes=1000,
                  scale_lr=1, dropout_rate=0.2, drop_connect_rate=0.2, epochs_drop_connect=50, hard_act=False):
         super(EfficientNet, self).__init__()
 
