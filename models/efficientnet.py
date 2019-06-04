@@ -21,11 +21,11 @@ def init_model(model):
 
 def modify_drop_connect_rate(model, value, log=True):
     for m in model.modules():
-        if hasattr(m, 'drop_connect'):
-            if log and m.drop_connect != value:
+        if hasattr(m, 'drop_prob'):
+            if log and m.drop_prob != value:
                 logging.debug('Modified drop-path rate from %s to %s' %
-                              (m.drop_connect, value))
-            m.drop_connect = value
+                              (m.drop_prob, value))
+            m.drop_prob = value
 
 
 def weight_decay_config(value=1e-4, log=False):
@@ -57,9 +57,9 @@ class ConvBNAct(nn.Sequential):
 def drop_connect(x, drop_prob):
     if drop_prob > 0.:
         keep_prob = 1.-drop_prob
-        mask = x.new(x.size(0), 1, 1, 1).bernoulli_(keep_prob)
-        x.div_(keep_prob)
-        x.mul_(mask)
+        mask = x.new(x.size(0), 1, 1, 1).bernoulli_(keep_prob).float()
+        mask.div_(keep_prob)
+        x = x.mul(mask)
     return x
 
 
