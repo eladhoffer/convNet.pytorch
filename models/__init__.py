@@ -10,3 +10,4 @@ from .mobilenet_v2 import *
 from .densenet import *
 from .mnist import *
 from .evolved import *
+from .efficientnet import *
