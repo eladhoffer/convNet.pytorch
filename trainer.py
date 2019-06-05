@@ -7,6 +7,11 @@ from torch.nn.utils import clip_grad_norm_
 from utils.meters import AverageMeter, accuracy
 from utils.mixup import MixUp
 from random import sample
+try:
+    import tensorwatch
+    _TENSORWATCH_AVAILABLE = True
+except ImportError:
+    _TENSORWATCH_AVAILABLE = False
 
 
 def _flatten_duplicates(inputs, target, batch_first=True, expand_target=True):
@@ -66,6 +71,8 @@ class Trainer(object):
         self.grad_scale = None
         self.loss_scale = loss_scale
         self.adapt_grad_norm = adapt_grad_norm
+        self.watcher = None
+        self.streams = {}
 
         if distributed:
             self.model = nn.parallel.DistributedDataParallel(model,
@@ -223,7 +230,7 @@ class Trainer(object):
             meters['step'].update(time.time() - end)
             end = time.time()
 
-            if i % self.print_freq == 0:
+            if i % self.print_freq == 0 or i == len(data_loader) - 1:
                 report = str('{phase} - Epoch: [{0}][{1}/{2}]\t'
                              'Time {meters[step].val:.3f} ({meters[step].avg:.3f})\t'
                              'Data {meters[data].val:.3f} ({meters[data].avg:.3f})\t'
@@ -238,6 +245,9 @@ class Trainer(object):
                     report += 'Grad {meters[grad].val:.3f} ({meters[grad].avg:.3f})'\
                         .format(meters=meters)
                 logging.info(report)
+                self.observe(model=self._model, data=(inputs, target))
+                self.stream_meters(meters,
+                                   prefix='train' if training else 'eval')
 
             if num_steps is not None and i >= num_steps:
                 break
@@ -255,3 +265,38 @@ class Trainer(object):
         self.model.eval()
         with torch.no_grad():
             return self.forward(data_loader, duplicates=duplicates, average_output=average_output, training=False)
+
+    def set_watcher(self, filename):
+        if not _TENSORWATCH_AVAILABLE:
+            return False
+        self.watcher = tensorwatch.Watcher(filename=filename)
+        self.get_stream('train_prec1')
+
+        self.watcher.make_notebook()
+        return True
+
+    def get_stream(self, name):
+        if self.watcher is None:
+            return None
+        if name not in self.streams.keys():
+            self.streams[name] = self.watcher.create_stream(name=name)
+        return self.streams[name]
+
+    def stream_meters(self, meters_dict, prefix=None):
+        if self.watcher is None:
+            return False
+        for name, value in meters_dict.items():
+            if prefix is not None:
+                name = '_'.join([prefix, name])
+            value = value.avg
+            stream = self.get_stream(name)
+            if stream is None:
+                continue
+            stream.write((self.training_steps, value))
+        return True
+
+    def observe(self, **kwargs):
+        if self.watcher is None:
+            return False
+        self.watcher.observe(**kwargs)
+        return True

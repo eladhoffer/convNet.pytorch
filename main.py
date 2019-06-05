@@ -103,10 +103,14 @@ parser.add_argument('-e', '--evaluate', type=str, metavar='FILE',
                     help='evaluate model FILE on validation set')
 parser.add_argument('--seed', default=123, type=int,
                     help='random seed (default: 123)')
+parser.add_argument('--tensorwatch', action='store_true', default=False,
+                    help='set tensorwatch logging')
+
 
 def main():
     args = parser.parse_args()
     main_worker(args)
+
 
 def main_worker(args):
     global best_prec1, dtype
@@ -180,7 +184,6 @@ def main_worker(args):
         logging.info("loaded checkpoint '%s' (epoch %s)",
                      args.evaluate, checkpoint['epoch'])
 
-
     if args.resume:
         checkpoint_file = args.resume
         if os.path.isdir(checkpoint_file):
@@ -225,6 +228,9 @@ def main_worker(args):
                       device_ids=args.device_ids, device=args.device, dtype=dtype,
                       distributed=args.distributed, local_rank=args.local_rank, mixup=args.mixup, loss_scale=args.loss_scale,
                       grad_clip=args.grad_clip, print_freq=args.print_freq, adapt_grad_norm=args.adapt_grad_norm)
+    if args.tensorwatch:
+        trainer.set_watcher(filename=os.path.abspath(
+            os.path.join(save_path, 'tensorwatch.log')))
 
     # Evaluation Data loading code
     args.eval_batch_size = args.eval_batch_size if args.eval_batch_size > 0 else args.batch_size
