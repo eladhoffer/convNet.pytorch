@@ -64,6 +64,7 @@ class Trainer(object):
         self.optimizer = optimizer
         self.device = device
         self.dtype = dtype
+        self.distributed = distributed
         self.local_rank = local_rank
         self.print_freq = print_freq
         self.grad_clip = grad_clip
@@ -268,6 +269,8 @@ class Trainer(object):
 
     def set_watcher(self, filename):
         if not _TENSORWATCH_AVAILABLE:
+            return False
+        if self.distributed and self.local_rank > 0:
             return False
         self.watcher = tensorwatch.Watcher(filename=filename)
         self.get_stream('train_prec1')
