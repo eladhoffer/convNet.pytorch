@@ -16,6 +16,7 @@ from utils.optim import OptimRegime
 from utils.cross_entropy import CrossEntropyLoss
 from utils.misc import torch_dtypes
 from utils.param_filter import FilterModules, is_bn
+from utils.absorb_bn import search_absorbe_bn
 from datetime import datetime
 from ast import literal_eval
 from trainer import Trainer
@@ -84,7 +85,8 @@ parser.add_argument('--print-freq', '-p', default=10, type=int,
                     metavar='N', help='print frequency (default: 10)')
 parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')
-
+parser.add_argument('--absorb-bn', action='store_true', default=False,
+                    help='absorb batch-norm before evaluation')
 parser.add_argument('--seed', default=123, type=int,
                     help='random seed (default: 123)')
 
@@ -154,11 +156,14 @@ def main_worker(args):
     logging.info("loaded checkpoint '%s' (epoch %s)",
                  args.evaluate, checkpoint['epoch'])
 
+    if args.absorb_bn:
+        search_absorbe_bn(model, verbose=True)
+
     # define loss function (criterion) and optimizer
     loss_params = {}
     if args.label_smoothing > 0:
         loss_params['smooth_eps'] = args.label_smoothing
-    criterion = getattr(model, 'criterion', nn.NLLLoss)(**loss_params)
+    criterion = getattr(model, 'criterion', nn.CrossEntropyLoss)(**loss_params)
     criterion.to(args.device, dtype)
     model.to(args.device, dtype)
 
