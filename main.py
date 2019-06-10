@@ -71,6 +71,8 @@ parser.add_argument('--eval-batch-size', default=-1, type=int,
                     help='mini-batch size (default: same as training)')
 parser.add_argument('--optimizer', default='SGD', type=str, metavar='OPT',
                     help='optimizer function used')
+parser.add_argument('--save-optim-state', action='store_true', default=False,
+                    help='save optimizer state for resume')
 parser.add_argument('--label-smoothing', default=0, type=float,
                     help='label smoothing coefficient - default 0')
 parser.add_argument('--mixup', default=None, type=float,
@@ -197,10 +199,13 @@ def main_worker(args):
                 args.start_epoch = checkpoint['epoch'] - 1
             best_prec1 = checkpoint['best_prec1']
             model.load_state_dict(checkpoint['state_dict'])
+            optim_state_dict = checkpoint.get('optim_state_dict', None)
             logging.info("loaded checkpoint '%s' (epoch %s)",
                          checkpoint_file, checkpoint['epoch'])
         else:
             logging.error("no checkpoint found at '%s'", args.resume)
+    else:
+        optim_state_dict = None
 
     # define loss function (criterion) and optimizer
     loss_params = {}
@@ -223,6 +228,9 @@ def main_worker(args):
 
     optimizer = optim_regime if isinstance(optim_regime, OptimRegime) \
         else OptimRegime(model, optim_regime, use_float_copy='half' in args.dtype)
+
+    if optim_state_dict is not None:
+        optimizer.load_state_dict(optim_state_dict)
 
     trainer = Trainer(model, criterion, optimizer,
                       device_ids=args.device_ids, device=args.device, dtype=dtype,
@@ -274,11 +282,15 @@ def main_worker(args):
         # remember best prec@1 and save checkpoint
         is_best = val_results['prec1'] > best_prec1
         best_prec1 = max(val_results['prec1'], best_prec1)
+
+        if args.save_optim_state:
+            optim_state_dict = optimizer.state_dict()
         save_checkpoint({
             'epoch': epoch + 1,
             'model': args.model,
             'config': args.model_config,
             'state_dict': model.state_dict(),
+            'optim_state_dict': optim_state_dict,
             'best_prec1': best_prec1
         }, is_best, path=save_path)
 
