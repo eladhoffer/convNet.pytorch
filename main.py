@@ -285,6 +285,9 @@ def main_worker(args):
 
         if args.save_optim_state:
             optim_state_dict = optimizer.state_dict()
+        else:
+            optim_state_dict = None
+            
         save_checkpoint({
             'epoch': epoch + 1,
             'model': args.model,
