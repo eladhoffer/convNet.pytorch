@@ -3,7 +3,7 @@ import numpy as np
 import torchvision.transforms as transforms
 import random
 from autoaugment import ImageNetPolicy, CIFAR10Policy
-import PIL
+
 _IMAGENET_STATS = {'mean': [0.485, 0.456, 0.406],
                    'std': [0.229, 0.224, 0.225]}
 
@@ -36,7 +36,7 @@ def scale_crop(input_size, scale_size=None, num_crops=1, normalize=_IMAGENET_STA
                                         torch.stack([convert_tensor(crop) for crop in crops])))
 
     if scale_size != input_size:
-        t_list = [transforms.Resize(scale_size, interpolation=PIL.Image.NEAREST)] + t_list
+        t_list = [transforms.Resize(scale_size)] + t_list
 
     return transforms.Compose(t_list)
 
@@ -76,7 +76,7 @@ def cifar_autoaugment(input_size, scale_size=None, normalize=_IMAGENET_STATS):
 
 def inception_preproccess(input_size, normalize=_IMAGENET_STATS):
     return transforms.Compose([
-        transforms.RandomResizedCrop(input_size, interpolation=PIL.Image.NEAREST),
+        transforms.RandomResizedCrop(input_size),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize(**normalize)
