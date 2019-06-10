@@ -174,7 +174,7 @@ class Trainer(object):
         outputs = torch.cat(outputs, dim=0)
         return outputs, total_loss, grad
 
-    def forward(self, data_loader, num_steps=None, training=False, duplicates=1, average_output=False, chunk_batch=1):
+    def forward(self, data_loader, num_steps=None, training=False, average_output=False, chunk_batch=1):
 
         meters = {name: AverageMeter()
                   for name in ['step', 'data', 'loss', 'prec1', 'prec5']}
@@ -184,8 +184,6 @@ class Trainer(object):
         batch_first = True
         if training and isinstance(self.model, nn.DataParallel) or chunk_batch > 1:
             batch_first = False
-        if average_output:
-            assert duplicates > 1 and batch_first, "duplicates must be > 1 for output averaging"
 
         def meter_results(meters):
             results = {name: meter.avg for name, meter in meters.items()}
@@ -196,7 +194,8 @@ class Trainer(object):
         end = time.time()
 
         for i, (inputs, target) in enumerate(data_loader):
-            if training and duplicates > 1 and self.adapt_grad_norm is not None \
+            duplicates = inputs.dim() > 4  # B x D x C x H x W
+            if training and duplicates and self.adapt_grad_norm is not None \
                     and i % self.adapt_grad_norm == 0:
                 grad_mean = 0
                 num = inputs.size(1)
@@ -210,7 +209,7 @@ class Trainer(object):
 
             # measure data loading time
             meters['data'].update(time.time() - end)
-            if duplicates > 1:  # multiple versions for each sample (dim 1)
+            if duplicates:  # multiple versions for each sample (dim 1)
                 inputs, target = _flatten_duplicates(inputs, target, batch_first,
                                                      expand_target=not average_output)
 
@@ -246,7 +245,9 @@ class Trainer(object):
                     report += 'Grad {meters[grad].val:.3f} ({meters[grad].avg:.3f})'\
                         .format(meters=meters)
                 logging.info(report)
-                self.observe(model=self._model, data=(inputs, target))
+                self.observe(model=self._model,
+                             optimizer=self.optimizer,
+                             data=(inputs, target))
                 self.stream_meters(meters,
                                    prefix='train' if training else 'eval')
 
@@ -255,17 +256,17 @@ class Trainer(object):
 
         return meter_results(meters)
 
-    def train(self, data_loader, duplicates=1, average_output=False, chunk_batch=1):
+    def train(self, data_loader, average_output=False, chunk_batch=1):
         # switch to train mode
         self.model.train()
 
-        return self.forward(data_loader, duplicates=duplicates, training=True, average_output=average_output, chunk_batch=chunk_batch)
+        return self.forward(data_loader, training=True, average_output=average_output, chunk_batch=chunk_batch)
 
-    def validate(self, data_loader, average_output=False, duplicates=1):
+    def validate(self, data_loader, average_output=False):
         # switch to evaluate mode
         self.model.eval()
         with torch.no_grad():
-            return self.forward(data_loader, duplicates=duplicates, average_output=average_output, training=False)
+            return self.forward(data_loader, average_output=average_output, training=False)
 
     def set_watcher(self, filename):
         if not _TENSORWATCH_AVAILABLE:
@@ -273,8 +274,6 @@ class Trainer(object):
         if self.distributed and self.local_rank > 0:
             return False
         self.watcher = tensorwatch.Watcher(filename=filename)
-        self.get_stream('train_prec1')
-
         self.watcher.make_notebook()
         return True
 

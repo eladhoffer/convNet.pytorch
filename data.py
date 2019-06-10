@@ -3,11 +3,16 @@ import torch
 import torchvision.datasets as datasets
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.sampler import RandomSampler
+from torch.utils.data import Subset
+from torch._utils import _accumulate
 from utils.regime import Regime
 from utils.dataset import IndexedFileDataset
 from preprocess import get_transform
+from itertools import chain
+from copy import deepcopy
 import warnings
 warnings.filterwarnings("ignore", "(Possibly )?corrupt EXIF data", UserWarning)
+
 
 def get_dataset(name, split='train', transform=None,
                 target_transform=None, download=True, datasets_path='~/Datasets'):
@@ -68,7 +73,7 @@ _OTHER_ARGS = {'distributed'}
 
 class DataRegime(object):
     def __init__(self, regime, defaults={}):
-        self.regime = Regime(regime, defaults)
+        self.regime = Regime(regime, deepcopy(defaults))
         self.epoch = 0
         self.steps = None
         self.get_loader(True)
@@ -88,12 +93,16 @@ class DataRegime(object):
     def get(self, key, default=None):
         return self.regime.setting.get(key, default)
 
-    def get_loader(self, force_update=False):
+    def get_loader(self, force_update=False, override_settings=None, subset_indices=None):
         if force_update or self.regime.update(self.epoch, self.steps):
             setting = self.get_setting()
+            if override_settings is not None:
+                setting.update(override_settings)
             self._transform = get_transform(**setting['transform'])
             setting['data'].setdefault('transform', self._transform)
             self._data = get_dataset(**setting['data'])
+            if subset_indices is not None:
+                self._data = Subset(self._data, subset_indices)
             if setting['other'].get('distributed', False):
                 setting['loader']['sampler'] = DistributedSampler(self._data)
                 setting['loader']['shuffle'] = None
@@ -111,3 +120,86 @@ class DataRegime(object):
 
     def __len__(self):
         return len(self._data)
+
+
+class SampledDataLoader(object):
+    def __init__(self, dl_list):
+        self.dl_list = dl_list
+        self.epoch = 0
+
+    def generate_order(self):
+
+        order = [[idx]*len(dl) for idx, dl in enumerate(self.dl_list)]
+        order = list(chain(*order))
+        g = torch.Generator()
+        g.manual_seed(self.epoch)
+        return torch.tensor(order)[torch.randperm(len(order), generator=g)].tolist()
+
+    def __len__(self):
+        return sum([len(dl) for dl in self.dl_list])
+
+    def __iter__(self):
+        order = self.generate_order()
+
+        iterators = [iter(dl) for dl in self.dl_list]
+        for idx in order:
+            yield next(iterators[idx])
+        return
+
+
+class SampledDataRegime(DataRegime):
+    def __init__(self, data_regime_list,  probs, split_data=True):
+        self.probs = probs
+        self.data_regime_list = data_regime_list
+        self.split_data = split_data
+
+    def get_setting(self):
+        return [data_regime.get_setting() for data_regime in self.data_regime_list]
+
+    def get(self, key, default=None):
+        return [data_regime.get(key, default) for data_regime in self.data_regime_list]
+
+    def get_loader(self, force_update=False):
+        settings = self.get_setting()
+        if self.split_data:
+            dset_sizes = [len(get_dataset(**s['data'])) for s in settings]
+            assert len(set(dset_sizes)) == 1, \
+                "all datasets should be same size"
+            dset_size = dset_sizes[0]
+            lengths = [int(prob * dset_size) for prob in self.probs]
+            lengths[-1] = dset_size - sum(lengths[:-1])
+            indices = torch.randperm(dset_size).tolist()
+            indices_split = [indices[offset - length:offset]
+                             for offset, length in zip(_accumulate(lengths), lengths)]
+            loaders = [data_regime.get_loader(force_update=True, subset_indices=indices_split[i])
+                       for i, data_regime in enumerate(self.data_regime_list)]
+        else:
+            loaders = [data_regime.get_loader(
+                force_update=force_update) for data_regime in self.data_regime_list]
+        self._loader = SampledDataLoader(loaders)
+        self._loader.epoch = self.epoch
+
+        return self._loader
+
+    def set_epoch(self, epoch):
+        self.epoch = epoch
+        if hasattr(self, '_loader'):
+            self._loader.epoch = epoch
+        for data_regime in self.data_regime_list:
+            if data_regime._sampler is not None and hasattr(data_regime._sampler, 'set_epoch'):
+                data_regime._sampler.set_epoch(epoch)
+
+    def __len__(self):
+        return sum([len(data_regime._data)
+                    for data_regime in self.data_regime_list])
+
+
+if __name__ == '__main__':
+    reg1 = DataRegime(None, {'name': 'imagenet', 'batch_size': 16})
+    reg2 = DataRegime(None, {'name': 'imagenet', 'batch_size': 32})
+    reg1.set_epoch(0)
+    reg2.set_epoch(0)
+    mreg = SampledDataRegime([reg1, reg2])
+
+    for x, _ in mreg.get_loader():
+        print(x.shape)

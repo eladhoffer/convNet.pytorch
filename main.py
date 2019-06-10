@@ -263,7 +263,6 @@ def main_worker(args):
 
         # train for one epoch
         train_results = trainer.train(train_data.get_loader(),
-                                      duplicates=train_data.get('duplicates'),
                                       chunk_batch=args.chunk_batch)
 
         # evaluate on validation set
