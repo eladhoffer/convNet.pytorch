@@ -290,7 +290,7 @@ class Trainer(object):
         for name, value in meters_dict.items():
             if prefix is not None:
                 name = '_'.join([prefix, name])
-            value = value.avg
+            value = value.val
             stream = self.get_stream(name)
             if stream is None:
                 continue
