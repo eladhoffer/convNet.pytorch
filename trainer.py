@@ -245,11 +245,15 @@ class Trainer(object):
                     report += 'Grad {meters[grad].val:.3f} ({meters[grad].avg:.3f})'\
                         .format(meters=meters)
                 logging.info(report)
-                self.observe(model=self._model,
+                self.observe(trainer=self,
+                             model=self._model,
                              optimizer=self.optimizer,
                              data=(inputs, target))
                 self.stream_meters(meters,
                                    prefix='train' if training else 'eval')
+                if training:
+                    self.write_stream('lr',
+                                      (self.training_steps, self.optimizer.get_lr()[0]))
 
             if num_steps is not None and i >= num_steps:
                 break
@@ -259,7 +263,7 @@ class Trainer(object):
     def train(self, data_loader, average_output=False, chunk_batch=1):
         # switch to train mode
         self.model.train()
-
+        self.write_stream('epoch', (self.training_steps, self.epoch))
         return self.forward(data_loader, training=True, average_output=average_output, chunk_batch=chunk_batch)
 
     def validate(self, data_loader, average_output=False):
@@ -268,21 +272,31 @@ class Trainer(object):
         with torch.no_grad():
             return self.forward(data_loader, average_output=average_output, training=False)
 
-    def set_watcher(self, filename):
+    ###### tensorwatch methods to enable training-time logging ######
+
+    def set_watcher(self, filename, port=0):
         if not _TENSORWATCH_AVAILABLE:
             return False
         if self.distributed and self.local_rank > 0:
             return False
-        self.watcher = tensorwatch.Watcher(filename=filename)
+        self.watcher = tensorwatch.Watcher(filename=filename, port=port)
+        # default streams
+        self._default_streams()
         self.watcher.make_notebook()
         return True
 
-    def get_stream(self, name):
+    def get_stream(self, name, **kwargs):
         if self.watcher is None:
             return None
         if name not in self.streams.keys():
-            self.streams[name] = self.watcher.create_stream(name=name)
+            self.streams[name] = self.watcher.create_stream(name=name,
+                                                            **kwargs)
         return self.streams[name]
+
+    def write_stream(self, name, values):
+        stream = self.get_stream(name)
+        if stream is not None:
+            stream.write(values)
 
     def stream_meters(self, meters_dict, prefix=None):
         if self.watcher is None:
@@ -302,3 +316,10 @@ class Trainer(object):
             return False
         self.watcher.observe(**kwargs)
         return True
+
+    def _default_streams(self):
+        self.get_stream('train_loss')
+        self.get_stream('eval_loss')
+        self.get_stream('train_prec1')
+        self.get_stream('eval_prec1')
+        self.get_stream('lr')

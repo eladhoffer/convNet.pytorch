@@ -1,5 +1,4 @@
 import argparse
-import os
 import time
 import logging
 import torch
@@ -10,6 +9,7 @@ import torch.optim
 import torch.utils.data
 import models
 import torch.distributed as dist
+from os import path, makedirs
 from data import DataRegime
 from utils.log import setup_logging, ResultsLog, save_checkpoint
 from utils.optim import OptimRegime
@@ -107,6 +107,8 @@ parser.add_argument('--seed', default=123, type=int,
                     help='random seed (default: 123)')
 parser.add_argument('--tensorwatch', action='store_true', default=False,
                     help='set tensorwatch logging')
+parser.add_argument('--tensorwatch-port', default=0, type=int,
+                    help='set tensorwatch port')
 
 
 def main():
@@ -124,7 +126,7 @@ def main_worker(args):
         args.results_dir = '/tmp'
     if args.save is '':
         args.save = time_stamp
-    save_path = os.path.join(args.results_dir, args.save)
+    save_path = path.join(args.results_dir, args.save)
 
     args.distributed = args.local_rank >= 0 or args.world_size > 1
 
@@ -139,14 +141,14 @@ def main_worker(args):
         else:
             args.device_ids = [args.local_rank]
 
-    if not os.path.exists(save_path) and not (args.distributed and args.local_rank > 0):
-        os.makedirs(save_path)
+    if not path.exists(save_path) and not (args.distributed and args.local_rank > 0):
+        makedirs(save_path)
 
-    setup_logging(os.path.join(save_path, 'log.txt'),
+    setup_logging(path.join(save_path, 'log.txt'),
                   resume=args.resume is not '',
                   dummy=args.distributed and args.local_rank > 0)
 
-    results_path = os.path.join(save_path, 'results')
+    results_path = path.join(save_path, 'results')
     results = ResultsLog(
         results_path, title='Training Results - %s' % args.save)
 
@@ -175,7 +177,7 @@ def main_worker(args):
 
     # optionally resume from a checkpoint
     if args.evaluate:
-        if not os.path.isfile(args.evaluate):
+        if not path.isfile(args.evaluate):
             parser.error('invalid checkpoint: {}'.format(args.evaluate))
         checkpoint = torch.load(args.evaluate, map_location="cpu")
         # Overrride configuration with checkpoint info
@@ -188,11 +190,11 @@ def main_worker(args):
 
     if args.resume:
         checkpoint_file = args.resume
-        if os.path.isdir(checkpoint_file):
-            results.load(os.path.join(checkpoint_file, 'results.csv'))
-            checkpoint_file = os.path.join(
+        if path.isdir(checkpoint_file):
+            results.load(path.join(checkpoint_file, 'results.csv'))
+            checkpoint_file = path.join(
                 checkpoint_file, 'model_best.pth.tar')
-        if os.path.isfile(checkpoint_file):
+        if path.isfile(checkpoint_file):
             logging.info("loading checkpoint '%s'", args.resume)
             checkpoint = torch.load(checkpoint_file)
             if args.start_epoch < 0:  # not explicitly set
@@ -237,8 +239,8 @@ def main_worker(args):
                       distributed=args.distributed, local_rank=args.local_rank, mixup=args.mixup, loss_scale=args.loss_scale,
                       grad_clip=args.grad_clip, print_freq=args.print_freq, adapt_grad_norm=args.adapt_grad_norm)
     if args.tensorwatch:
-        trainer.set_watcher(filename=os.path.abspath(
-            os.path.join(save_path, 'tensorwatch.log')))
+        trainer.set_watcher(filename=path.abspath(path.join(save_path, 'tensorwatch.log')),
+                            port=args.tensorwatch_port)
 
     # Evaluation Data loading code
     args.eval_batch_size = args.eval_batch_size if args.eval_batch_size > 0 else args.batch_size
@@ -287,7 +289,7 @@ def main_worker(args):
             optim_state_dict = optimizer.state_dict()
         else:
             optim_state_dict = None
-            
+
         save_checkpoint({
             'epoch': epoch + 1,
             'model': args.model,
