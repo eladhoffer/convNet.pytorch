@@ -1,6 +1,7 @@
 import argparse
 import time
 import logging
+import json
 import torch
 import torch.nn as nn
 import torch.nn.parallel
@@ -10,8 +11,8 @@ import torch.utils.data
 import models
 import torch.distributed as dist
 from os import path, makedirs
-from data import DataRegime
-from utils.log import setup_logging, ResultsLog, save_checkpoint
+from data import DataRegime, SampledDataRegime
+from utils.log import setup_logging, ResultsLog, save_checkpoint, export_args_namespace
 from utils.optim import OptimRegime
 from utils.cross_entropy import CrossEntropyLoss
 from utils.misc import torch_dtypes
@@ -25,7 +26,8 @@ model_names = sorted(name for name in models.__dict__
                      and callable(models.__dict__[name]))
 
 parser = argparse.ArgumentParser(description='PyTorch ConvNet Training')
-
+parser.add_argument('--config-file', default=None,
+                    help='json configuration file')
 parser.add_argument('--results-dir', metavar='RESULTS_DIR', default='./results',
                     help='results dir')
 parser.add_argument('--save', metavar='SAVE', default='',
@@ -71,8 +73,10 @@ parser.add_argument('--eval-batch-size', default=-1, type=int,
                     help='mini-batch size (default: same as training)')
 parser.add_argument('--optimizer', default='SGD', type=str, metavar='OPT',
                     help='optimizer function used')
-parser.add_argument('--save-optim-state', action='store_true', default=False,
-                    help='save optimizer state for resume')
+parser.add_argument('--drop-optim-state', action='store_true', default=False,
+                    help='do not save optimizer state for resume')
+parser.add_argument('--save-all', action='store_true', default=False,
+                    help='save checkpoint for every epoch')
 parser.add_argument('--label-smoothing', default=0, type=float,
                     help='label smoothing coefficient - default 0')
 parser.add_argument('--mixup', default=None, type=float,
@@ -113,6 +117,12 @@ parser.add_argument('--tensorwatch-port', default=0, type=int,
 
 def main():
     args = parser.parse_args()
+    if args.config_file is not None:
+        with open(args.config_file) as f:
+            config_dict = json.loads(f.read())
+        parser.set_defaults(**config_dict)
+        args = parser.parse_args()
+
     main_worker(args)
 
 
@@ -141,16 +151,18 @@ def main_worker(args):
         else:
             args.device_ids = [args.local_rank]
 
-    if not path.exists(save_path) and not (args.distributed and args.local_rank > 0):
-        makedirs(save_path)
+    if not (args.distributed and args.local_rank > 0):
+        if not path.exists(save_path):
+            makedirs(save_path)
+        export_args_namespace(args, path.join(save_path, 'config.json'))
 
     setup_logging(path.join(save_path, 'log.txt'),
                   resume=args.resume is not '',
                   dummy=args.distributed and args.local_rank > 0)
 
     results_path = path.join(save_path, 'results')
-    results = ResultsLog(
-        results_path, title='Training Results - %s' % args.save)
+    results = ResultsLog(results_path,
+                         title='Training Results - %s' % args.save)
 
     logging.info("saving to %s", save_path)
     logging.debug("run arguments: %s", args)
@@ -255,12 +267,24 @@ def main_worker(args):
         return
 
     # Training Data loading code
-    train_data = DataRegime(getattr(model, 'data_regime', None),
-                            defaults={'datasets_path': args.datasets_dir, 'name': args.dataset, 'split': 'train', 'augment': True,
-                                      'input_size': args.input_size,  'batch_size': args.batch_size, 'shuffle': True,
-                                      'num_workers': args.workers, 'pin_memory': True, 'drop_last': True,
-                                      'distributed': args.distributed, 'duplicates': args.duplicates, 'autoaugment': args.autoaugment,
-                                      'cutout': {'holes': 1, 'length': 16} if args.cutout else None})
+    train_data_defaults = {'datasets_path': args.datasets_dir, 'name': args.dataset, 'split': 'train', 'augment': True,
+                           'input_size': args.input_size,  'batch_size': args.batch_size, 'shuffle': True,
+                           'num_workers': args.workers, 'pin_memory': True, 'drop_last': True,
+                           'distributed': args.distributed, 'duplicates': args.duplicates, 'autoaugment': args.autoaugment,
+                           'cutout': {'holes': 1, 'length': 16} if args.cutout else None}
+
+    if hasattr(model, 'sampled_data_regime'):
+        sampled_data_regime = model.sampled_data_regime
+        probs, regime_configs = zip(*sampled_data_regime)
+        regimes = []
+        for config in regime_configs:
+            defaults = {**train_data_defaults}
+            defaults.update(config)
+            regimes.append(DataRegime(None, defaults=defaults))
+        train_data = SampledDataRegime(regimes, probs)
+    else:
+        train_data = DataRegime(
+            getattr(model, 'data_regime', None), defaults=train_data_defaults)
 
     logging.info('optimization regime: %s', optim_regime)
     args.start_epoch = max(args.start_epoch, 0)
@@ -285,10 +309,10 @@ def main_worker(args):
         is_best = val_results['prec1'] > best_prec1
         best_prec1 = max(val_results['prec1'], best_prec1)
 
-        if args.save_optim_state:
-            optim_state_dict = optimizer.state_dict()
-        else:
+        if args.drop_optim_state:
             optim_state_dict = None
+        else:
+            optim_state_dict = optimizer.state_dict()
 
         save_checkpoint({
             'epoch': epoch + 1,
@@ -297,7 +321,7 @@ def main_worker(args):
             'state_dict': model.state_dict(),
             'optim_state_dict': optim_state_dict,
             'best_prec1': best_prec1
-        }, is_best, path=save_path)
+        }, is_best, path=save_path, save_all=args.save_all)
 
         logging.info('\nResults - Epoch: {0}\n'
                      'Training Loss {train[loss]:.4f} \t'
