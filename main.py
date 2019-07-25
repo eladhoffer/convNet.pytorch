@@ -208,9 +208,9 @@ def main_worker(args):
                 checkpoint_file, 'model_best.pth.tar')
         if path.isfile(checkpoint_file):
             logging.info("loading checkpoint '%s'", args.resume)
-            checkpoint = torch.load(checkpoint_file)
+            checkpoint = torch.load(checkpoint_file, map_location="cpu")
             if args.start_epoch < 0:  # not explicitly set
-                args.start_epoch = checkpoint['epoch'] - 1
+                args.start_epoch = checkpoint['epoch']
             best_prec1 = checkpoint['best_prec1']
             model.load_state_dict(checkpoint['state_dict'])
             optim_state_dict = checkpoint.get('optim_state_dict', None)
