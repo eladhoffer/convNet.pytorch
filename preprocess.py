@@ -44,13 +44,14 @@ def scale_crop(input_size, scale_size=None, num_crops=1, normalize=_IMAGENET_STA
 def scale_random_crop(input_size, scale_size=None, normalize=_IMAGENET_STATS):
     t_list = [
         transforms.RandomCrop(input_size),
+        transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize(**normalize),
     ]
     if scale_size != input_size:
         t_list = [transforms.Resize(scale_size)] + t_list
 
-    transforms.Compose(t_list)
+    return transforms.Compose(t_list)
 
 
 def pad_random_crop(input_size, scale_size=None, normalize=_IMAGENET_STATS):
@@ -78,6 +79,16 @@ def inception_preproccess(input_size, normalize=_IMAGENET_STATS):
     return transforms.Compose([
         transforms.RandomResizedCrop(input_size),
         transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize(**normalize)
+    ])
+
+
+def inception_autoaugment_preproccess(input_size, normalize=_IMAGENET_STATS):
+    return transforms.Compose([
+        transforms.RandomResizedCrop(input_size),
+        transforms.RandomHorizontalFlip(),
+        ImageNetPolicy(fillcolor=(128, 128, 128)),
         transforms.ToTensor(),
         transforms.Normalize(**normalize)
     ])
@@ -116,9 +127,14 @@ def get_transform(transform_name='imagenet', input_size=None, scale_size=None,
     if 'imagenet' in transform_name:  # inception augmentation is default for imagenet
         scale_size = scale_size or 256
         input_size = input_size or 224
+        scale_size = scale_size or int(input_size * 8/7)
         if augment:
-            transform_fn = inception_preproccess(input_size,
-                                                 normalize=normalize)
+            if autoaugment:
+                transform_fn = inception_autoaugment_preproccess(input_size,
+                                                                 normalize=normalize)
+            else:
+                transform_fn = inception_preproccess(input_size,
+                                                     normalize=normalize)
         else:
             transform_fn = scale_crop(input_size=input_size, scale_size=scale_size,
                                       num_crops=num_crops, normalize=normalize)
@@ -130,8 +146,8 @@ def get_transform(transform_name='imagenet', input_size=None, scale_size=None,
                 transform_fn = cifar_autoaugment(input_size, scale_size=scale_size,
                                                  normalize=normalize)
             else:
-                transform_fn = pad_random_crop(input_size, scale_size=scale_size,
-                                               normalize=normalize)
+                transform_fn = scale_random_crop(input_size, scale_size=scale_size,
+                                                 normalize=normalize)
         else:
             scale_size = scale_size or 32
             transform_fn = scale_crop(input_size=input_size, scale_size=scale_size,
