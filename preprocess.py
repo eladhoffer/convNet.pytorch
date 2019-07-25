@@ -125,7 +125,6 @@ def get_transform(transform_name='imagenet', input_size=None, scale_size=None,
     normalize = normalize or _IMAGENET_STATS
     transform_fn = None
     if 'imagenet' in transform_name:  # inception augmentation is default for imagenet
-        scale_size = scale_size or 256
         input_size = input_size or 224
         scale_size = scale_size or int(input_size * 8/7)
         if augment:
@@ -146,8 +145,8 @@ def get_transform(transform_name='imagenet', input_size=None, scale_size=None,
                 transform_fn = cifar_autoaugment(input_size, scale_size=scale_size,
                                                  normalize=normalize)
             else:
-                transform_fn = scale_random_crop(input_size, scale_size=scale_size,
-                                                 normalize=normalize)
+                transform_fn = pad_random_crop(input_size, scale_size=scale_size,
+                                               normalize=normalize)
         else:
             scale_size = scale_size or 32
             transform_fn = scale_crop(input_size=input_size, scale_size=scale_size,
