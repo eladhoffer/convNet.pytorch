@@ -77,6 +77,8 @@ parser.add_argument('--augment', action='store_true', default=False,
                     help='perform augmentations')
 parser.add_argument('--cutout', action='store_true', default=False,
                     help='cutout augmentations')
+parser.add_argument('--calibrate-bn', action='store_true', default=False,
+                    help='calibrate bn stats')
 parser.add_argument('--autoaugment', action='store_true', default=False,
                     help='use autoaugment policies')
 parser.add_argument('--avg-out', action='store_true', default=False,
@@ -157,7 +159,7 @@ def main_worker(args):
                  args.evaluate, checkpoint['epoch'])
 
     if args.absorb_bn:
-        search_absorbe_bn(model, verbose=True)
+        search_absorbe_bn(model, remove_bn=not args.calibrate_bn, verbose=True)
 
     # define loss function (criterion) and optimizer
     loss_params = {}
@@ -176,15 +178,18 @@ def main_worker(args):
                       mixup=args.mixup, print_freq=args.print_freq)
 
     # Evaluation Data loading code
-    val_data = DataRegime(getattr(model, 'data_eval_regime', None),
-                          defaults={'datasets_path': args.datasets_dir, 'name': args.dataset, 'split': 'val', 'augment': args.augment,
-                                    'input_size': args.input_size, 'batch_size': args.batch_size, 'shuffle': False, 'duplicates': args.duplicates, 'autoaugment': args.autoaugment,
-                                    'cutout': {'holes': 1, 'length': 16} if args.cutout else None, 'num_workers': args.workers, 'pin_memory': True, 'drop_last': False})
+    val_data = DataRegime(None, defaults={'datasets_path': args.datasets_dir, 'name': args.dataset, 'split': 'val', 'augment': args.augment,
+                                          'input_size': args.input_size, 'batch_size': args.batch_size, 'shuffle': False, 'duplicates': args.duplicates, 'autoaugment': args.autoaugment,
+                                          'cutout': {'holes': 1, 'length': 16} if args.cutout else None, 'num_workers': args.workers, 'pin_memory': True, 'drop_last': False})
 
+    if args.calibrate_bn:
+        train_data = DataRegime(None, defaults={'datasets_path': args.datasets_dir, 'name': args.dataset, 'split': 'train', 'augment': True,
+                                                'input_size': args.input_size, 'batch_size': args.batch_size, 'shuffle': True, 'num_workers': args.workers, 'pin_memory': True, 'drop_last': False})
+        trainer.calibrate_bn(train_data.get_loader(), num_steps=200)
     results = trainer.validate(val_data.get_loader(),
-                               duplicates=val_data.get('duplicates'),
                                average_output=args.avg_out)
     logging.info(results)
+    print(results)
     return results
 
 
