@@ -16,7 +16,7 @@ from utils.optim import OptimRegime
 from utils.cross_entropy import CrossEntropyLoss
 from utils.misc import torch_dtypes
 from utils.param_filter import FilterModules, is_bn
-from utils.absorb_bn import search_absorbe_bn
+from utils.absorb_bn import search_absorb_bn
 from datetime import datetime
 from ast import literal_eval
 from trainer import Trainer
@@ -159,7 +159,7 @@ def main_worker(args):
                  args.evaluate, checkpoint['epoch'])
 
     if args.absorb_bn:
-        search_absorbe_bn(model, remove_bn=not args.calibrate_bn, verbose=True)
+        search_absorb_bn(model, remove_bn=not args.calibrate_bn, verbose=True)
 
     # define loss function (criterion) and optimizer
     loss_params = {}
