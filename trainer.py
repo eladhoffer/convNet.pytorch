@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.parallel
 from torch.nn.utils import clip_grad_norm_
 from utils.meters import AverageMeter, accuracy
-from utils.mixup import MixUp
+from utils.mixup import MixUp, CutMix
 from random import sample
 try:
     import tensorwatch
@@ -56,7 +56,7 @@ class Trainer(object):
     def __init__(self, model, criterion, optimizer=None,
                  device_ids=[0], device=torch.cuda, dtype=torch.float,
                  distributed=False, local_rank=-1, adapt_grad_norm=None,
-                 mixup=None, loss_scale=1., grad_clip=-1, print_freq=100):
+                 mixup=None, cutmix=None, loss_scale=1., grad_clip=-1, print_freq=100):
         self._model = model
         self.criterion = criterion
         self.epoch = 0
@@ -69,6 +69,7 @@ class Trainer(object):
         self.print_freq = print_freq
         self.grad_clip = grad_clip
         self.mixup = mixup
+        self.cutmix = cutmix
         self.grad_scale = None
         self.loss_scale = loss_scale
         self.adapt_grad_norm = adapt_grad_norm
@@ -118,12 +119,13 @@ class Trainer(object):
             mixup = None
             if training:
                 self.optimizer.pre_forward()
-                if self.mixup is not None:
-                    input_mixup = MixUp()
+                if self.mixup is not None or self.cutmix is not None:
+                    input_mixup = CutMix() if self.cutmix else MixUp()
+                    mix_val = self.mixup or self.cutmix
                     mixup_modules = [input_mixup]  # input mixup
                     mixup_modules += [m for m in self.model.modules()
                                       if isinstance(m, MixUp)]
-                    mixup = _mixup(mixup_modules, self.mixup, inputs.size(0))
+                    mixup = _mixup(mixup_modules, mix_val, inputs.size(0))
                     inputs = input_mixup(inputs)
 
             # compute output
@@ -271,6 +273,16 @@ class Trainer(object):
         self.model.eval()
         with torch.no_grad():
             return self.forward(data_loader, average_output=average_output, training=False)
+
+    def calibrate_bn(self, data_loader, num_steps=None):
+        for m in self.model.modules():
+            if isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.BatchNorm1d):
+                m.momentum = None
+                m.track_running_stats = True
+                m.reset_running_stats()
+        self.model.train()
+        with torch.no_grad():
+            return self.forward(data_loader, num_steps=num_steps, training=False)
 
     ###### tensorwatch methods to enable training-time logging ######
 
