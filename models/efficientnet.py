@@ -173,7 +173,7 @@ class EfficientNet(nn.Module):
                             'epoch_lambda': config_by_epoch}]
 
         elif regime == 'cosine':
-            def cosine_anneal_lr(epoch, base_lr=0.025, T_max=num_epochs., eta_min=1e-4):
+            def cosine_anneal_lr(epoch, base_lr=0.025, T_max=num_epochs, eta_min=1e-4):
                 return eta_min + (base_lr - eta_min) * \
                     (1 + math.cos(math.pi * epoch / T_max)) / 2
 
