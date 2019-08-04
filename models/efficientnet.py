@@ -32,7 +32,7 @@ def weight_decay_config(value=1e-4, log=False):
     def regularize_layer(m):
         non_depthwise_conv = isinstance(m, nn.Conv2d) \
             and m.groups != m.in_channels
-        return isinstance(m, nn.Linear) or non_depthwise_conv
+        return not isinstance(m, nn.BatchNorm2d)
 
     return {'name': 'WeightDecay',
             'value': value,
@@ -104,8 +104,8 @@ class MBConvBlock(nn.Sequential):
 
 class EfficientNet(nn.Module):
 
-    def __init__(self, width_coeff=1, depth_coeff=1, resolution=224, se_ratio=0.25, regime=None, num_classes=1000,
-                 scale_lr=1, dropout_rate=0.2, drop_connect_rate=0.2, epochs_drop_connect=50, hard_act=False):
+    def __init__(self, width_coeff=1, depth_coeff=1, resolution=224, se_ratio=0.25, regime='cosine', num_classes=1000,
+                 scale_lr=1, dropout_rate=0.2, drop_connect_rate=0.2, num_epochs=200, hard_act=False):
         super(EfficientNet, self).__init__()
 
         def channels(base_channels, coeff=width_coeff, divisor=8, min_channels=None):
@@ -157,36 +157,36 @@ class EfficientNet(nn.Module):
         init_model(self)
 
         def increase_drop_connect(epoch):
-            return lambda: modify_drop_connect_rate(self, min(drop_connect_rate, drop_connect_rate * epoch / float(epochs_drop_connect)))
+            return lambda: modify_drop_connect_rate(self, min(drop_connect_rate, drop_connect_rate * epoch / float(num_epochs)))
 
-        if regime == 'original':
+        if regime == 'paper':
             def config_by_epoch(epoch):
-                return {'lr': scale_lr * 0.256 * (0.97 ** round(epoch/2.4)),
+                return {'lr': scale_lr * 0.016 * (0.97 ** round(epoch/2.4)),
                         'execute': increase_drop_connect(epoch)}
 
             """RMSProp optimizer with
             decay 0.9 and momentum 0.9;
             weight decay 1e-5; initial learning rate 0.256 that decays
             by 0.97 every 2.4 epochs"""
-            self.regime = [{'optimizer': 'RMSprop', 'alpha': 0.9, 'momentum': 0.9, 'centered': True,
+            self.regime = [{'optimizer': 'RMSprop', 'alpha': 0.9, 'momentum': 0.9, 'lr': scale_lr * 0.016,
                             'regularizer': weight_decay_config(1e-5),
                             'epoch_lambda': config_by_epoch}]
 
-        else:
-            def cosine_anneal_lr(epoch, base_lr=0.025, T_max=100., eta_min=1e-5):
+        elif regime == 'cosine':
+            def cosine_anneal_lr(epoch, base_lr=0.025, T_max=num_epochs., eta_min=1e-4):
                 return eta_min + (base_lr - eta_min) * \
                     (1 + math.cos(math.pi * epoch / T_max)) / 2
 
             def config_by_epoch(epoch):
-                return {'lr': cosine_anneal_lr(epoch, base_lr=0.1, T_max=100),
+                return {'lr': cosine_anneal_lr(epoch, base_lr=scale_lr * 0.1, T_max=num_epochs),
                         'execute': increase_drop_connect(epoch)}
             self.regime = [{'optimizer': 'SGD', 'momentum': 0.9,
                             'regularizer': weight_decay_config(1e-5),
                             'epoch_lambda': config_by_epoch}]
 
-            self.data_regime = [{'input_size': resolution}]
-            self.data_eval_regime = [{'input_size': resolution,
-                                      'scale_size': int(resolution * 8/7)}]
+        self.data_regime = [{'input_size': resolution, 'autoaugment': True}]
+        self.data_eval_regime = [{'input_size': resolution,
+                                  'scale_size': int(resolution * 8/7)}]
 
     def forward(self, x):
         x = self.features(x)
