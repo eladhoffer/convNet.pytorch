@@ -246,8 +246,8 @@ class ResNet_imagenet(ResNet):
 
         # base regime
         self.regime = [
-            {'epoch': 0, 'optimizer': 'SGD', 'momentum': 0.9,
-             'regularizer': weight_decay_config(1e-4)},
+            {'epoch': 0, 'optimizer': 'SGD', 'lr': scale_lr * 1e-1,
+             'momentum': 0.9, 'regularizer': weight_decay_config(1e-4)},
             {'epoch': 30, 'lr': scale_lr * 1e-2},
             {'epoch': 60, 'lr': scale_lr * 1e-3},
             {'epoch': 80, 'lr': scale_lr * 1e-4}
@@ -255,8 +255,8 @@ class ResNet_imagenet(ResNet):
 
         if 'cutmix' in regime:
             self.regime = [
-                {'epoch': 0, 'optimizer': 'SGD', 'momentum': 0.9,
-                 'regularizer': weight_decay_config(1e-4)},
+                {'epoch': 0, 'optimizer': 'SGD', 'lr': scale_lr * 1e-1,
+                 'momentum': 0.9, 'regularizer': weight_decay_config(1e-4)},
                 {'epoch': 75, 'lr': scale_lr * 1e-2},
                 {'epoch': 150, 'lr': scale_lr * 1e-3},
                 {'epoch': 225, 'lr': scale_lr * 1e-4}
