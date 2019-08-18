@@ -12,12 +12,6 @@ from utils.mixup import MixUp
 __all__ = ['resnet', 'resnet_se']
 
 
-def conv3x3(in_planes, out_planes, stride=1, groups=1, bias=False):
-    "3x3 convolution with padding"
-    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
-                     padding=1, groups=groups, bias=bias)
-
-
 def init_model(model):
     for m in model.modules():
         if isinstance(m, nn.Conv2d):
@@ -43,6 +37,44 @@ def weight_decay_config(value=1e-4, log=False):
             'filter': {'parameter_name': lambda n: not n.endswith('bias'),
                        'module': lambda m: not isinstance(m, nn.BatchNorm2d)}
             }
+
+
+def mixsize_config(sz, base_size, base_batch, base_duplicates, adapt_batch, adapt_duplicates):
+    assert adapt_batch or adapt_duplicates or sz == base_size
+    batch_size = base_batch
+    duplicates = base_duplicates
+    if adapt_batch and adapt_duplicates:
+        scale = base_size/sz
+    else:
+        scale = (base_size/sz)**2
+
+    if scale * duplicates < 0.5:
+        adapt_duplicates = False
+        adapt_batch = True
+
+    if adapt_batch:
+        batch_size = int(round(scale * base_batch))
+
+    if adapt_duplicates:
+        duplicates = int(round(scale * duplicates))
+
+    duplicates = max(1, duplicates)
+    return {
+        'input_size': sz,
+        'batch_size': batch_size,
+        'duplicates': duplicates
+    }
+
+
+def ramp_up_fn(lr0, lrT, T):
+    rate = (lrT - lr0) / T
+    return "lambda t: {'lr': %s + t * %s}" % (lr0, rate)
+
+
+def conv3x3(in_planes, out_planes, stride=1, groups=1, bias=False):
+    "3x3 convolution with padding"
+    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
+                     padding=1, groups=groups, bias=bias)
 
 
 class BasicBlock(nn.Module):
@@ -181,11 +213,13 @@ class ResNet(nn.Module):
 
 
 class ResNet_imagenet(ResNet):
+    num_train_images = 1281167
 
     def __init__(self, num_classes=1000, inplanes=64,
                  block=Bottleneck, residual_block=None, layers=[3, 4, 23, 3],
                  width=[64, 128, 256, 512], expansion=4, groups=[1, 1, 1, 1],
-                 regime='normal', scale_lr=1, checkpoint_segments=0, mixup=False):
+                 regime='normal', scale_lr=1, ramp_up_lr=True, checkpoint_segments=0, mixup=False,
+                 base_devices=4, base_device_batch=64, base_duplicates=1, base_image_size=224, mix_size_regime='D+'):
         super(ResNet_imagenet, self).__init__()
         self.inplanes = inplanes
         self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3,
@@ -207,54 +241,65 @@ class ResNet_imagenet(ResNet):
         self.fc = nn.Linear(width[-1] * expansion, num_classes)
 
         init_model(self)
+        batch_size = base_devices * base_device_batch
+        num_steps_epoch = math.floor(self.num_train_images / batch_size)
 
-        def ramp_up_lr(lr0, lrT, T):
-            rate = (lrT - lr0) / T
-            return "lambda t: {'lr': %s + t * %s}" % (lr0, rate)
-        if regime == 'normal':
+        # base regime
+        self.regime = [
+            {'epoch': 0, 'optimizer': 'SGD', 'momentum': 0.9,
+             'regularizer': weight_decay_config(1e-4)},
+            {'epoch': 30, 'lr': scale_lr * 1e-2},
+            {'epoch': 60, 'lr': scale_lr * 1e-3},
+            {'epoch': 80, 'lr': scale_lr * 1e-4}
+        ]
+
+        if 'cutmix' in regime:
             self.regime = [
-                {'epoch': 0, 'optimizer': 'SGD', 'momentum': 0.9, 'regularizer': weight_decay_config(1e-4),
-                 'step_lambda': ramp_up_lr(0.1, 0.1 * scale_lr, 5004 * 5 / scale_lr)},
-                {'epoch': 5,  'lr': scale_lr * 1e-1},
-                {'epoch': 30, 'lr': scale_lr * 1e-2},
-                {'epoch': 60, 'lr': scale_lr * 1e-3},
-                {'epoch': 80, 'lr': scale_lr * 1e-4}
+                {'epoch': 0, 'optimizer': 'SGD', 'momentum': 0.9,
+                 'regularizer': weight_decay_config(1e-4)},
+                {'epoch': 75, 'lr': scale_lr * 1e-2},
+                {'epoch': 150, 'lr': scale_lr * 1e-3},
+                {'epoch': 225, 'lr': scale_lr * 1e-4}
             ]
-        elif regime == 'fast':
-            self.regime = [
-                {'epoch': 0, 'optimizer': 'SGD', 'momentum': 0.9, 'regularizer': weight_decay_config(1e-4),
-                 'step_lambda': ramp_up_lr(0.1, 0.1 * 4 * scale_lr, 5004 * 4 / (4 * scale_lr))},
-                {'epoch': 4,  'lr': 4 * scale_lr * 1e-1},
-                {'epoch': 18, 'lr': scale_lr * 1e-1},
-                {'epoch': 21, 'lr': scale_lr * 1e-2},
-                {'epoch': 35, 'lr': scale_lr * 1e-3},
-                {'epoch': 43, 'lr': scale_lr * 1e-4},
-            ]
-            self.data_regime = [
-                {'epoch': 0, 'input_size': 128, 'batch_size': 256},
-                {'epoch': 18, 'input_size': 224, 'batch_size': 64},
-                {'epoch': 41, 'input_size': 288, 'batch_size': 32},
-            ]
-        elif 'small' in regime:
-            if regime == 'small_half':
-                bs_factor = 2
-            else:
-                bs_factor = 1
-            scale_lr *= 4 * bs_factor
-            self.regime = [
-                {'epoch': 0, 'optimizer': 'SGD', 'regularizer': weight_decay_config(1e-4),
-                 'momentum': 0.9, 'lr': scale_lr * 1e-1},
-                {'epoch': 30, 'lr': scale_lr * 1e-2},
-                {'epoch': 60, 'lr': scale_lr * 1e-3},
-                {'epoch': 80, 'lr': bs_factor * 1e-4}
-            ]
-            self.data_regime = [
-                {'epoch': 0, 'input_size': 128, 'batch_size': 256 * bs_factor},
-                {'epoch': 80, 'input_size': 224, 'batch_size': 64 * bs_factor},
-            ]
+
+        # Sampled regimes from "Mix & Match: training convnets with mixed image sizes for improved accuracy, speed and scale resiliency"
+        if 'sampled' in regime:
+            # add gradient smoothing
+            self.regime[0]['regularizer'] = [{'name': 'GradSmooth', 'momentum': 0.9, 'log': False},
+                                             weight_decay_config(1e-4)]
+            ramp_up_lr = False
+            self.data_regime = None
+
+            def size_config(size): return mixsize_config(size, base_size=base_image_size, base_batch=base_device_batch, base_duplicates=base_duplicates,
+                                                         adapt_batch=mix_size_regime == 'B+', adapt_duplicates=mix_size_regime == 'D+')
+            increment = int(base_image_size / 7)
+
+            if '144' in regime:
+                self.sampled_data_regime = [
+                    (0.1, size_config(base_image_size+increment)),
+                    (0.1, size_config(base_image_size)),
+                    (0.6, size_config(base_image_size - 3*increment)),
+                    (0.2, size_config(base_image_size - 4*increment)),
+                ]
+            else:  # sampled-224
+                self.sampled_data_regime = [
+                    (0.8/6, size_config(base_image_size - 3*increment)),
+                    (0.8/6, size_config(base_image_size - 2*increment)),
+                    (0.8/6, size_config(base_image_size - increment)),
+                    (0.2, size_config(base_image_size)),
+                    (0.8/6, size_config(base_image_size + increment)),
+                    (0.8/6, size_config(base_image_size + 2*increment)),
+                    (0.8/6, size_config(base_image_size + 3*increment)),
+                ]
+
             self.data_eval_regime = [
-                {'epoch': 0, 'input_size': 224, 'batch_size': 512 * bs_factor},
+                {'epoch': 0, 'input_size': base_image_size}
             ]
+
+        if ramp_up_lr and scale_lr > 1:  # add learning rate ramp-up
+            self.regime[0]['step_lambda'] = ramp_up_fn(0.1, 0.1 * scale_lr,
+                                                       num_steps_epoch * 5)
+            self.regime.insert(1, {'epoch': 5,  'lr': scale_lr * 1e-1})
 
 
 class ResNet_cifar(ResNet):

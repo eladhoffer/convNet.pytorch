@@ -121,6 +121,9 @@ class DataRegime(object):
     def __len__(self):
         return len(self._data)
 
+    def __repr__(self):
+        return str(self.regime)
+
 
 class SampledDataLoader(object):
     def __init__(self, dl_list):
@@ -192,6 +195,12 @@ class SampledDataRegime(DataRegime):
     def __len__(self):
         return sum([len(data_regime._data)
                     for data_regime in self.data_regime_list])
+
+    def __repr__(self):
+        print_str = 'Sampled Data Regime:\n'
+        for p, config in zip(self.probs, self.data_regime_list):
+            print_str += 'w.p. %s:  %s\n' % (p, config)
+        return print_str
 
 
 if __name__ == '__main__':

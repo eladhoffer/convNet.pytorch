@@ -81,6 +81,8 @@ parser.add_argument('--label-smoothing', default=0, type=float,
                     help='label smoothing coefficient - default 0')
 parser.add_argument('--mixup', default=None, type=float,
                     help='mixup alpha coefficient - default None')
+parser.add_argument('--cutmix', default=None, type=float,
+                    help='cutmix alpha coefficient - default None')
 parser.add_argument('--duplicates', default=1, type=int,
                     help='number of augmentations over singel example')
 parser.add_argument('--chunk-batch', default=1, type=int,
@@ -247,9 +249,9 @@ def main_worker(args):
         optimizer.load_state_dict(optim_state_dict)
 
     trainer = Trainer(model, criterion, optimizer,
-                      device_ids=args.device_ids, device=args.device, dtype=dtype,
-                      distributed=args.distributed, local_rank=args.local_rank, mixup=args.mixup, loss_scale=args.loss_scale,
-                      grad_clip=args.grad_clip, print_freq=args.print_freq, adapt_grad_norm=args.adapt_grad_norm)
+                      device_ids=args.device_ids, device=args.device, dtype=dtype, print_freq=args.print_freq,
+                      distributed=args.distributed, local_rank=args.local_rank, mixup=args.mixup, cutmix=args.cutmix,
+                      loss_scale=args.loss_scale, grad_clip=args.grad_clip,  adapt_grad_norm=args.adapt_grad_norm)
     if args.tensorwatch:
         trainer.set_watcher(filename=path.abspath(path.join(save_path, 'tensorwatch.log')),
                             port=args.tensorwatch_port)
@@ -287,6 +289,7 @@ def main_worker(args):
             getattr(model, 'data_regime', None), defaults=train_data_defaults)
 
     logging.info('optimization regime: %s', optim_regime)
+    logging.info('data regime: %s', train_data)
     args.start_epoch = max(args.start_epoch, 0)
     trainer.training_steps = args.start_epoch * len(train_data)
     for epoch in range(args.start_epoch, args.epochs):
