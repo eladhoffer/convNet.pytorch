@@ -19,9 +19,9 @@ It is based off [imagenet example in pytorch](https://github.com/pytorch/example
  git clone --recursive https://github.com/eladhoffer/convNet.pytorch
  ```
  
- example for efficient multi-gpu training of resnet50 (4 gpus, label-smoothing, fast regime by fast-ai):
+ example for efficient multi-gpu training of resnet50 (4 gpus, label-smoothing):
  ```
- python -m torch.distributed.launch --nproc_per_node=4  main.py --model resnet --model-config "{'depth': 50, 'regime': 'fast'}" --eval-batch-size 512 --save resnet50_fast --label-smoothing 0.1
+ python -m torch.distributed.launch --nproc_per_node=4  main.py --model resnet --model-config "{'depth': 50}" --eval-batch-size 512 --save resnet50_ls --label-smoothing 0.1
 ```
 
 This code can be used to implement several recent papers:
