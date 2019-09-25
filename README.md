@@ -44,6 +44,18 @@ This code can be used to implement several recent papers:
     ```
     python main.py --dataset cifar10 --model resnet --model-config "{'depth': 44}"  --duplicates 40 --cutout -b 64 --epochs 100 --save resnet44_cutout_m-40
     ```
+
+  - [Hoffer et al. (2019): Mix & Match: training convnets with mixed image sizes for improved accuracy, speed and scale resiliency](https://arxiv.org/abs/1908.08986)
+    
+    For example, training the resnet44 with mixed sizes example in paper:
+    ```
+    python main.py --model resnet --dataset cifar10 --save cifar10_mixsize_d -b 64 --model-config "{'regime': 'sampled_D+'}" --epochs 200
+    ```
+    Then, calibrate for specific size and evaluate using
+    ```
+    python evaluate.py ./results/cifar10_mixsize_d/checkpoint.pth.tar --dataset cifar10 -b 64 --calibrate-bn
+    ```
+    
 ## Dependencies
 
 - [pytorch](<http://www.pytorch.org>)
@@ -122,6 +134,14 @@ If you use the code in your paper, consider citing one of the implemented works.
   title={Augment your batch: better training with larger batches},
   author={Hoffer, Elad and Ben-Nun, Tal and Hubara, Itay and Giladi, Niv and Hoefler, Torsten and Soudry, Daniel},
   journal={arXiv preprint arXiv:1901.09335},
+  year={2019}
+}
+```
+```
+@article{hoffer2019mix,
+  title={Mix \& Match: training convnets with mixed image sizes for improved accuracy, speed and scale resiliency},
+  author={Hoffer, Elad and Weinstein, Berry and Hubara, Itay and Ben-Nun, Tal and Hoefler, Torsten and Soudry, Daniel},
+  journal={arXiv preprint arXiv:1908.08986},
   year={2019}
 }
 ```
