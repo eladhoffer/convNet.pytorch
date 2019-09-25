@@ -316,32 +316,54 @@ class ResNet_cifar(ResNet):
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = lambda x: x
 
-        self.layer1 = self._make_layer(block, width[0], n, groups=groups[
-                                       0], residual_block=residual_block, dropout=dropout, mixup=mixup)
-        self.layer2 = self._make_layer(
-            block, width[1], n, stride=2, groups=groups[1], residual_block=residual_block, dropout=dropout, mixup=mixup)
-        self.layer3 = self._make_layer(
-            block, width[2], n, stride=2, groups=groups[2], residual_block=residual_block, dropout=dropout, mixup=mixup)
+        self.layer1 = self._make_layer(block, width[0], n, groups=groups[0],
+                                       residual_block=residual_block, dropout=dropout, mixup=mixup)
+        self.layer2 = self._make_layer(block, width[1], n, stride=2, groups=groups[1],
+                                       residual_block=residual_block, dropout=dropout, mixup=mixup)
+        self.layer3 = self._make_layer(block, width[2], n, stride=2, groups=groups[2],
+                                       residual_block=residual_block, dropout=dropout, mixup=mixup)
         self.layer4 = lambda x: x
-        self.avgpool = nn.AvgPool2d(8)
+        self.avgpool = nn.AdaptiveAvgPool2d(1)
         self.fc = nn.Linear(width[-1], num_classes)
 
         init_model(self)
-        if regime == 'normal':
-            self.regime = [
-                {'epoch': 0, 'optimizer': 'SGD', 'lr': 1e-1, 'momentum': 0.9,
-                 'regularizer': weight_decay_config(1e-4)},
-                {'epoch': 81, 'lr': 1e-2},
-                {'epoch': 122, 'lr': 1e-3},
-                {'epoch': 164, 'lr': 1e-4}
-            ]
-        elif regime == 'wide-resnet':
+        self.regime = [
+            {'epoch': 0, 'optimizer': 'SGD', 'lr': 1e-1, 'momentum': 0.9,
+                'regularizer': weight_decay_config(1e-4)},
+            {'epoch': 81, 'lr': 1e-2},
+            {'epoch': 122, 'lr': 1e-3},
+            {'epoch': 164, 'lr': 1e-4}
+        ]
+
+        if 'wide-resnet' in regime:
             self.regime = [
                 {'epoch': 0, 'optimizer': 'SGD', 'lr': 1e-1, 'momentum': 0.9,
                  'regularizer': weight_decay_config(5e-4)},
                 {'epoch': 60, 'lr': 2e-2},
                 {'epoch': 120, 'lr': 4e-3},
                 {'epoch': 160, 'lr': 8e-4}
+            ]
+
+        # Sampled regimes from "Mix & Match: training convnets with mixed image sizes for improved accuracy, speed and scale resiliency"
+        if 'sampled' in regime:
+            adapt_batch = True if 'B+' in regime else False
+            adapt_duplicates = True if ('D+' in regime or not adapt_batch) \
+                else False
+
+            def size_config(size): return mixsize_config(size, base_size=32, base_batch=64, base_duplicates=1,
+                                                         adapt_batch=adapt_batch, adapt_duplicates=adapt_duplicates)
+            # add gradient smoothing
+            self.regime[0]['regularizer'] = [{'name': 'GradSmooth', 'momentum': 0.9, 'log': False},
+                                             weight_decay_config(1e-4)]
+            self.data_regime = None
+            self.sampled_data_regime = [
+                (0.3, size_config(32)),
+                (0.2, size_config(48)),
+                (0.3, size_config(24)),
+                (0.2, size_config(16)),
+            ]
+            self.data_eval_regime = [
+                {'epoch': 0, 'input_size': 32, 'scale_size': 32}
             ]
 
 
