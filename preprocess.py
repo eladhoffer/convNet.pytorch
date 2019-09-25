@@ -68,7 +68,7 @@ def cifar_autoaugment(input_size, scale_size=None, padding=None, normalize=_IMAG
     return T
 
 
-def inception_preproccess(input_size, normalize=_IMAGENET_STATS):
+def inception_preprocess(input_size, normalize=_IMAGENET_STATS):
     return transforms.Compose([
         transforms.RandomResizedCrop(input_size),
         transforms.RandomHorizontalFlip(),
@@ -77,7 +77,7 @@ def inception_preproccess(input_size, normalize=_IMAGENET_STATS):
     ])
 
 
-def inception_autoaugment_preproccess(input_size, normalize=_IMAGENET_STATS):
+def inception_autoaugment_preprocess(input_size, normalize=_IMAGENET_STATS):
     return transforms.Compose([
         transforms.RandomResizedCrop(input_size),
         transforms.RandomHorizontalFlip(),
@@ -87,7 +87,7 @@ def inception_autoaugment_preproccess(input_size, normalize=_IMAGENET_STATS):
     ])
 
 
-def inception_color_preproccess(input_size, normalize=_IMAGENET_STATS):
+def inception_color_preprocess(input_size, normalize=_IMAGENET_STATS):
     return transforms.Compose([
         transforms.RandomResizedCrop(input_size),
         transforms.RandomHorizontalFlip(),
@@ -122,11 +122,11 @@ def get_transform(transform_name='imagenet', input_size=None, scale_size=None,
         scale_size = scale_size or int(input_size * 8/7)
         if augment:
             if autoaugment:
-                transform_fn = inception_autoaugment_preproccess(input_size,
-                                                                 normalize=normalize)
+                transform_fn = inception_autoaugment_preprocess(input_size,
+                                                                normalize=normalize)
             else:
-                transform_fn = inception_preproccess(input_size,
-                                                     normalize=normalize)
+                transform_fn = inception_preprocess(input_size,
+                                                    normalize=normalize)
         else:
             transform_fn = scale_crop(input_size=input_size, scale_size=scale_size,
                                       num_crops=num_crops, normalize=normalize)
