@@ -79,6 +79,8 @@ parser.add_argument('--save-all', action='store_true', default=False,
                     help='save checkpoint for every epoch')
 parser.add_argument('--label-smoothing', default=0, type=float,
                     help='label smoothing coefficient - default 0')
+parser.add_argument('--sync-bn', action='store_true', default=False,
+                    help='synchronize batch-norm')
 parser.add_argument('--mixup', default=None, type=float,
                     help='mixup alpha coefficient - default None')
 parser.add_argument('--cutmix', default=None, type=float,
@@ -185,6 +187,8 @@ def main_worker(args):
         model_config = dict(model_config, **literal_eval(args.model_config))
 
     model = model(**model_config)
+    if args.sync_bn:
+        model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
     logging.info("created model with configuration: %s", model_config)
     num_parameters = sum([l.nelement() for l in model.parameters()])
     logging.info("number of parameters: %d", num_parameters)
