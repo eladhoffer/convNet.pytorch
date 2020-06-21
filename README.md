@@ -38,7 +38,7 @@ This code can be used to implement several recent papers:
     ```
     python main.py --model resnet --model-config "{'depth': 18, 'quantize':True}" --save resnet18_8bit -b 64
     ```
-  - [Hoffer et al. (2019): Augment your batch: better training with larger batches](https://arxiv.org/abs/1901.09335)
+  - [Hoffer et al. (2020): Augment Your Batch: Improving Generalization Through Instance Repetition](http://openaccess.thecvf.com/content_CVPR_2020/html/Hoffer_Augment_Your_Batch_Improving_Generalization_Through_Instance_Repetition_CVPR_2020_paper.html)
     
     For example, training the resnet44 + cutout example in paper:
     ```
@@ -131,11 +131,12 @@ If you use the code in your paper, consider citing one of the implemented works.
 }
 ```
 ```
-@article{hoffer2019augment,
-  title={Augment your batch: better training with larger batches},
-  author={Hoffer, Elad and Ben-Nun, Tal and Hubara, Itay and Giladi, Niv and Hoefler, Torsten and Soudry, Daniel},
-  journal={arXiv preprint arXiv:1901.09335},
-  year={2019}
+@inproceedings{Hoffer_2020_CVPR,
+  author = {Hoffer, Elad and Ben-Nun, Tal and Hubara, Itay and Giladi, Niv and Hoefler, Torsten and Soudry, Daniel},
+  title = {Augment Your Batch: Improving Generalization Through Instance Repetition},
+  booktitle = {The IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+  month = {June},
+  year = {2020}
 }
 ```
 ```
